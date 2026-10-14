@@ -1,0 +1,14 @@
+node_modules/
+dist/
+client/node_modules/
+client/dist/
+.env
+*.log
+storage/files/*
+!storage/files/.gitkeep
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+.DS_Store
+Thumbs.db
