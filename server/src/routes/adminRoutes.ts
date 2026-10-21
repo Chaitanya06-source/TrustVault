@@ -1,107 +1,168 @@
 import { Router, Response } from 'express';
-import { authenticate, requireRole, AuthenticatedRequest } from '../middlewares/authMiddleware';
-import { AuditService } from '../services/auditService';
-import { getDatabase } from '../db/database';
+import {
+  authenticate,
+  requireRole,
+  AuthenticatedRequest,
+} from '../middlewares/authMiddleware';
+import { PgAuditService } from '../services/auditService.pg';
+import { postgresQuery } from '../db/postgres';
 
 export const adminRouter = Router();
 
 adminRouter.use(authenticate);
 adminRouter.use(requireRole('admin'));
 
-/**
- * GET /api/admin/alerts
- * Returns automated security alerts (e.g. denied download spikes, brute force probing)
- */
-adminRouter.get('/alerts', (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const alerts = AuditService.getSecurityAlerts();
-    res.json({ alerts });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * GET /api/admin/metrics
- * System-wide document activity and security health metrics.
- * Note: Admin sees structural counts without inspecting confidential file bytes.
- */
-adminRouter.get('/metrics', (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const db = getDatabase();
-
-    const docStats = db.prepare(`
-      SELECT
-        COUNT(*) as total_documents,
-        COALESCE(SUM(file_size_bytes), 0) as total_storage_bytes
-      FROM documents
-    `).get() as { total_documents: number; total_storage_bytes: number };
-
-    const auditStats = db.prepare(`
-      SELECT
-        COUNT(*) as total_audit_records,
-        SUM(CASE WHEN status = 'DENIED' THEN 1 ELSE 0 END) as total_denied_events,
-        SUM(CASE WHEN action = 'DOCUMENT_DOWNLOAD' THEN 1 ELSE 0 END) as total_downloads,
-        SUM(CASE WHEN action = 'DOCUMENT_UPLOAD' THEN 1 ELSE 0 END) as total_uploads
-      FROM audit_logs
-    `).get() as any;
-
-    const userStats = db.prepare(`
-      SELECT
-        COUNT(*) as total_users,
-        SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_users
-      FROM users
-    `).get() as { total_users: number; active_users: number };
-
-    res.json({
-      metrics: {
-        documents: docStats,
-        audit: auditStats,
-        users: userStats
-      }
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * POST /api/admin/users/:id/toggle
- * Deactivates or activates a user.
- * Immediate effect: deactivated users cannot authenticate or use existing tokens.
- */
-adminRouter.post('/users/:id/toggle', (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const db = getDatabase();
-    const user = db.prepare('SELECT id, email, name, role, is_active FROM users WHERE id = ?').get(req.params.id) as any;
-
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
+adminRouter.get(
+  '/alerts',
+  async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const alerts = await PgAuditService.getSecurityAlerts();
+      res.json({ alerts });
+    } catch (err: unknown) {
+      console.error('[Admin] Could not retrieve alerts:', err);
+      res.status(500).json({ error: 'Unable to retrieve security alerts' });
     }
+  },
+);
 
-    const newStatus = user.is_active === 1 ? 0 : 1;
-    db.prepare('UPDATE users SET is_active = ? WHERE id = ?').run(newStatus, user.id);
+adminRouter.get(
+  '/metrics',
+  async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const [docResult, auditResult, userResult] = await Promise.all([
+        postgresQuery<{
+          total_documents: string;
+          total_storage_bytes: string;
+        }>(`
+          SELECT COUNT(*) AS total_documents,
+                 COALESCE(SUM(file_size_bytes), 0) AS total_storage_bytes
+          FROM documents
+        `),
 
-    const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
-    const userAgent = req.headers['user-agent'] || 'client';
+        postgresQuery<{
+          total_audit_records: string;
+          total_denied_events: string;
+          total_downloads: string;
+          total_uploads: string;
+        }>(`
+          SELECT
+            COUNT(*) AS total_audit_records,
+            COUNT(*) FILTER (WHERE status = 'DENIED') AS total_denied_events,
+            COUNT(*) FILTER (WHERE action = 'DOCUMENT_DOWNLOAD') AS total_downloads,
+            COUNT(*) FILTER (WHERE action = 'DOCUMENT_UPLOAD') AS total_uploads
+          FROM audit_logs
+        `),
 
-    AuditService.recordEvent({
-      actorId: req.user!.id,
-      actorEmail: req.user!.email,
-      actorRole: req.user!.role,
-      action: newStatus === 0 ? 'USER_ACCOUNT_DEACTIVATED' : 'USER_ACCOUNT_ACTIVATED',
-      targetType: 'USER',
-      targetId: user.id,
-      targetName: user.email,
-      status: 'SUCCESS',
-      details: { previousStatus: user.is_active, newStatus },
-      ipAddress,
-      userAgent
-    });
+        postgresQuery<{
+          total_users: string;
+          active_users: string;
+        }>(`
+          SELECT
+            COUNT(*) AS total_users,
+            COUNT(*) FILTER (WHERE is_active = 1) AS active_users
+          FROM users
+        `),
+      ]);
 
-    res.json({ success: true, user: { ...user, is_active: newStatus } });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
+      const doc = docResult.rows[0];
+      const audit = auditResult.rows[0];
+      const users = userResult.rows[0];
+
+      res.json({
+        metrics: {
+          documents: {
+            total_documents: Number(doc.total_documents),
+            total_storage_bytes: Number(doc.total_storage_bytes),
+          },
+          audit: {
+            total_audit_records: Number(audit.total_audit_records),
+            total_denied_events: Number(audit.total_denied_events),
+            total_downloads: Number(audit.total_downloads),
+            total_uploads: Number(audit.total_uploads),
+          },
+          users: {
+            total_users: Number(users.total_users),
+            active_users: Number(users.active_users),
+          },
+        },
+      });
+    } catch (err: unknown) {
+      console.error('[Admin] Could not retrieve metrics:', err);
+      res.status(500).json({ error: 'Unable to retrieve system metrics' });
+    }
+  },
+);
+
+adminRouter.post(
+  '/users/:id/toggle',
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userResult = await postgresQuery<{
+        id: string;
+        email: string;
+        name: string;
+        role: 'admin' | 'owner' | 'viewer';
+        is_active: number;
+      }>(
+        'SELECT id, email, name, role, is_active FROM users WHERE id = $1',
+        [req.params.id],
+      );
+
+      const user = userResult.rows[0];
+
+      if (!user) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      if (user.id === req.user!.id) {
+        res.status(400).json({
+          error: 'You cannot deactivate or reactivate your own account here',
+        });
+        return;
+      }
+
+      const newStatus = user.is_active === 1 ? 0 : 1;
+
+      const updatedResult = await postgresQuery<{
+        id: string;
+        email: string;
+        name: string;
+        role: 'admin' | 'owner' | 'viewer';
+        is_active: number;
+      }>(
+        `UPDATE users
+         SET is_active = $1
+         WHERE id = $2
+         RETURNING id, email, name, role, is_active`,
+        [newStatus, user.id],
+      );
+
+      const ipHeader = req.headers['x-forwarded-for'];
+      const ipAddress = (
+        typeof ipHeader === 'string' ? ipHeader.split(',')[0].trim() : undefined
+      ) || req.socket.remoteAddress || '127.0.0.1';
+
+      await PgAuditService.recordEvent({
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        actorRole: req.user!.role,
+        action: newStatus === 0
+          ? 'USER_ACCOUNT_DEACTIVATED'
+          : 'USER_ACCOUNT_ACTIVATED',
+        targetType: 'USER',
+        targetId: user.id,
+        targetName: user.email,
+        status: 'SUCCESS',
+        details: { previousStatus: user.is_active, newStatus },
+        ipAddress,
+        userAgent: req.headers['user-agent'] || 'client',
+      });
+
+      res.json({ success: true, user: updatedResult.rows[0] });
+    } catch (err: unknown) {
+      console.error('[Admin] User status update failed:', err);
+      res.status(500).json({ error: 'Unable to update user status' });
+    }
+  },
+);
