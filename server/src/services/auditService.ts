@@ -184,7 +184,7 @@ export class AuditService {
     const db = getDatabase();
     const records = db
       .prepare('SELECT * FROM audit_logs ORDER BY sequence_number ASC')
-      .all() as AuditRecord[];
+      .all() as unknown as AuditRecord[];
 
     const verifiedAt = new Date().toISOString();
 
@@ -305,7 +305,7 @@ export class AuditService {
 
     const logs = db
       .prepare(`SELECT * FROM audit_logs ${whereSql} ORDER BY sequence_number DESC LIMIT ? OFFSET ?`)
-      .all(...params, limit, offset) as AuditRecord[];
+     .all(...params, limit, offset) as unknown as AuditRecord[];
 
     return { logs, total };
   }

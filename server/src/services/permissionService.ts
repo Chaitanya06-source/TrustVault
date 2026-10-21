@@ -338,6 +338,6 @@ export class PermissionService {
       JOIN users gu ON dp.granted_by = gu.id
       WHERE dp.document_id = ?
       ORDER BY dp.granted_at DESC
-    `).all(documentId) as PermissionGrant[];
+    `).all(documentId) as unknown as PermissionGrant[];
   }
 }

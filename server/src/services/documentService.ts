@@ -336,8 +336,7 @@ export class DocumentService {
       GROUP BY d.id
       ORDER BY d.updated_at DESC
       LIMIT ? OFFSET ?
-    `).all(requester.id, requester.id, ...params, limit, offset) as DocumentRecord[];
-
+    `).all(requester.id, requester.id, ...params, limit, offset) as unknown as DocumentRecord[];
     return { documents: rows, total };
   }
 
@@ -382,7 +381,7 @@ export class DocumentService {
     }
 
     const db = getDatabase();
-    const existing = db.prepare('SELECT * FROM documents WHERE id = ?').get(documentId) as DocumentRecord;
+    const existing = db.prepare('SELECT * FROM documents WHERE id = ?').get(documentId) as unknown as DocumentRecord;
     const now = new Date().toISOString();
 
     let storagePath = existing.storage_path;

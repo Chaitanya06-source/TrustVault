@@ -7,7 +7,7 @@
     "dev:server": "tsx watch server/src/server.ts",
     "dev:client": "npm --prefix client run dev",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "build:server": "tsc -p server/tsconfig.json",
+    "build:server": "tsc -p tsconfig.json",
     "build:client": "npm --prefix client run build",
     "build": "npm run build:server && npm run build:client",
     "start": "node dist/server/src/server.js",
@@ -49,6 +49,6 @@
     "supertest": "^7.0.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
-    "vitest": "^3.0.8"
+    "vitest": "^5.0.5"
   }
 }
