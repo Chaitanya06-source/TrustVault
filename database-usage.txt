@@ -1,0 +1,49 @@
+﻿C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\db\database.ts:1: import { DatabaseSync } from 'node:sqlite';
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\db\database.ts:4: let dbInstance: DatabaseSync | null = null;
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\db\database.ts:6: export function getDatabase(): DatabaseSync {
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\db\database.ts:8: dbInstance = new DatabaseSync(CONFIG.DB_PATH);
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\db\database.ts:17: export function initSchema(db: DatabaseSync): void {
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\db\database.ts:115: export function resetDatabase(customDb?: DatabaseSync): void {
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\db\seed.ts:17: const existingUsers = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\db\seed.ts:68: db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\routes\adminRoutes.ts:33: const docStats = db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\routes\adminRoutes.ts:40: const auditStats = db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\routes\adminRoutes.ts:49: const userStats = db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\routes\adminRoutes.ts:76: const user = db.prepare('SELECT id, email, name, role, is_active FROM users WHERE id = ?').get(req.params.id) as any;
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\routes\adminRoutes.ts:84: db.prepare('UPDATE users SET is_active = ? WHERE id = ?').run(newStatus, user.id);
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\routes\auditRoutes.ts:39: .prepare('SELECT id FROM documents WHERE owner_id = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\aiAdvisoryService.ts:107: db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\aiAdvisoryService.ts:178: .prepare('SELECT * FROM ai_advisory_logs WHERE id = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\aiAdvisoryService.ts:211: db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\auditService.ts:100: .prepare('SELECT sequence_number, record_hash FROM audit_logs ORDER BY sequence_number DESC LIMIT 1')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\auditService.ts:128: const stmt = db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\auditService.ts:186: .prepare('SELECT * FROM audit_logs ORDER BY sequence_number ASC')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\auditService.ts:300: const countRow = db.prepare(`SELECT COUNT(*) as count FROM audit_logs ${whereSql}`).get(...params) as { count: number };
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\auditService.ts:307: .prepare(`SELECT * FROM audit_logs ${whereSql} ORDER BY sequence_number DESC LIMIT ? OFFSET ?`)
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\auditService.ts:330: const deniedActors = db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\auditService.ts:352: const attackedDocs = db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\authService.ts:84: .prepare('SELECT * FROM users WHERE LOWER(email) = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\authService.ts:163: .prepare('SELECT id, email, name, role, is_active, created_at FROM users WHERE id = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\authService.ts:175: .prepare('SELECT id, email, name, role, is_active, created_at FROM users WHERE is_active = 1 ORDER BY name ASC')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\documentService.ts:65: db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\documentService.ts:168: const doc = db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\documentService.ts:219: const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(documentId) as DocumentRecord | undefined;
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\documentService.ts:310: const countRow = db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\documentService.ts:321: const rows = db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\documentService.ts:384: const existing = db.prepare('SELECT * FROM documents WHERE id = ?').get(documentId) as unknown as DocumentRecord;
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\documentService.ts:420: db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\documentService.ts:510: const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(documentId) as DocumentRecord | undefined;
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\documentService.ts:522: db.prepare('DELETE FROM documents WHERE id = ?').run(documentId);
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:42: .prepare('SELECT id, title, owner_id FROM documents WHERE id = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:74: .prepare('SELECT permission_level FROM document_permissions WHERE document_id = ? AND user_id = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:137: .prepare('SELECT id, title, owner_id FROM documents WHERE id = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:163: .prepare('SELECT id, name, email FROM users WHERE id = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:176: .prepare('SELECT id FROM document_permissions WHERE document_id = ? AND user_id = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:183: db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:189: db.prepare(`
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:216: const grantorUser = db.prepare('SELECT name FROM users WHERE id = ?').get(grantorId) as { name: string } | undefined;
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:248: .prepare('SELECT id, title, owner_id FROM documents WHERE id = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:273: .prepare('SELECT id, name, email FROM users WHERE id = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:278: .prepare('DELETE FROM document_permissions WHERE document_id = ? AND user_id = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:314: .prepare('SELECT id, owner_id FROM documents WHERE id = ?')
+C:\Users\sanam\Downloads\23jk1a05d7 synovasys project\server\src\services\permissionService.ts:325: return db.prepare(`
