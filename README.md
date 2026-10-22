@@ -1,192 +1,360 @@
 # TrustVault — Zero-Trust Document Sharing & Cryptographic Audit Ledger
 
-> **Platform Mission**: Build a document platform where the wrong person can never read the file, and you can prove who read it.  
-> **Core Architecture**: Zero-Trust Permission Gateway • Instant Revocation • Cryptographic Tamper-Evident Hash Chain • Magic-Byte Upload Defense.
+> **Platform mission:** Ensure documents are accessible only to authorized users and maintain a tamper-evident record of security-relevant activity.
+>
+> **Core principles:** Zero-trust authorization · Least privilege · Immediate access revocation · Cryptographic audit integrity · Secure file validation
+
+TrustVault is a secure document-sharing platform built around server-side authorization, explicit document permissions, protected file storage, and a cryptographically verifiable audit ledger. It also includes an AI-assisted access advisor that supports human decisions without independently granting permissions.
+
+**Live application:** [Open TrustVault](https://trustvault-frontend-3scb.onrender.com)  
+**Backend health check:** [Check API health](https://trustvault-1ndr.onrender.com/api/health)  
+**Source code:** [GitHub repository](https://github.com/Chaitanya06-source/TrustVault)
 
 ---
 
-## 1. Quick Start (From a Clean Clone)
+## Table of Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Security Model](#security-model)
+- [AI Access Advisor](#ai-access-advisor)
+- [Technology Stack](#technology-stack)
+- [Live Deployment](#live-deployment)
+- [Local Development Setup](#local-development-setup)
+- [Testing](#testing)
+- [API Reference](#api-reference)
+- [Design Decisions](#design-decisions)
+- [Project Documentation](#project-documentation)
+
+## Features
+
+- **Zero-trust document authorization:** Validate permissions on protected document operations instead of trusting the client.
+- **Granular access control:** Document owners can grant or revoke `view` and `edit` permissions for named users.
+- **Immediate revocation:** Subsequent requests are checked against current permissions.
+- **Protected document storage:** Store files in Supabase Storage and access them through the backend.
+- **Tamper-evident audit ledger:** Use an HMAC-SHA256 hash chain to detect unauthorized changes to audit records.
+- **Security monitoring:** Record denied access attempts and provide administrative audit and alert views.
+- **Upload validation:** Validate file types, extensions, and filenames to reduce common upload risks.
+- **AI-assisted access recommendations:** Suggest document sensitivity and least-privilege sharing options while leaving permission decisions to the user.
+- **Role separation:** Separate administrative responsibilities from document ownership and content access.
+
+## Architecture
+
+TrustVault uses a frontend, backend API, PostgreSQL database, and object-storage service.
+
+```text
+User / Browser
+      |
+      v
+Frontend Application
+      |
+      v
+Backend API (Node.js + TypeScript)
+      |
+      +---- Authentication and authorization
+      |
+      +---- Document and permission services
+      |
+      +---- Cryptographic audit services
+      |
+      +---- AI advisory services
+      |
+      +---- PostgreSQL (Neon)
+      |
+      +---- Supabase Storage
+```
+
+### Core components
+
+| Component | Responsibility |
+|---|---|
+| Frontend | User interface for authentication, document management, permissions, and audit information |
+| Backend API | Validates requests and enforces authorization rules |
+| PostgreSQL | Stores users, documents, permissions, and audit records |
+| Supabase Storage | Stores uploaded document objects |
+| Audit service | Maintains and verifies the cryptographic audit chain |
+| AI advisory service | Generates access and sensitivity recommendations for human review |
+
+The backend is the security boundary. The frontend does not replace server-side authorization checks.
+
+## Security Model
+
+### 1. Server-side authorization
+
+Every protected operation must be authorized by the backend. A user should not gain access merely by knowing a document ID or modifying a client request.
+
+- Document access is governed by ownership and explicit permissions.
+- Document listings and search must filter results according to the requesting user's access.
+- Unauthorized requests are denied.
+- File downloads are handled through the application rather than by exposing public document paths.
+
+### 2. Document permissions
+
+TrustVault follows an owner-centric discretionary access control model.
+
+| Permission | Capabilities |
+|---|---|
+| `owner` | Manage the document, grant or revoke access, update supported document information, and inspect its audit history |
+| `view` | Read permitted document metadata and download its contents |
+| `edit` | Perform supported document editing operations without automatically receiving ownership privileges |
+| `none` | No document access |
+
+The administrator role does not automatically grant permission to read every confidential document. Administrative capabilities and document-content permissions are separate concerns.
+
+### 3. Immediate revocation
+
+When a document owner revokes a user's permission, subsequent protected requests must be checked against the updated permission state.
+
+TrustVault avoids relying on long-lived, pre-signed download links as its document authorization mechanism. The application backend mediates access to stored document contents.
+
+### 4. Cryptographic audit integrity
+
+TrustVault uses an HMAC-SHA256 hash chain to make unauthorized modifications to audit records detectable.
+
+Conceptually, each record incorporates its contents and the previous record's hash:
+
+```text
+current_hash = HMAC-SHA256(
+    audit_secret,
+    canonical_record_data + previous_hash
+)
+```
+
+The exact serialization and field ordering must match the implementation.
+
+The audit verification command is:
+
+```bash
+npm run audit:verify
+```
+
+The verification endpoint is:
+
+```http
+GET /api/audit/verify
+```
+
+A successful verification indicates that the checked records are consistent with the chain and verification key. It does not, by itself, prove that every possible event was logged or that the signing secret has never been compromised.
+
+**Important:** Keep the audit secret private and separate from public source code. Protect access to the database and signing secret independently.
+
+### 5. Upload validation and response protection
+
+TrustVault includes upload validation and security-oriented download response headers. Depending on the operation, these protections can include:
+
+- Filename sanitization
+- File-extension and file-signature checks
+- Rejection of disallowed file types
+- `X-Content-Type-Options: nosniff`
+- Appropriate cache-control headers for confidential content
+- Controlled download responses
+
+File validation reduces risk but should not be treated as a guarantee that every uploaded file is harmless.
+
+## AI Access Advisor
+
+TrustVault includes an AI-assisted access advisor and document sensitivity classifier.
+
+The intended workflow is:
+
+1. Analyze document information and context.
+2. Suggest a sensitivity category and possible least-privilege recipients.
+3. Present the recommendation to the document owner.
+4. Require an explicit human decision before applying supported recommendations.
+5. Record relevant advisory and confirmation events in the audit ledger.
+
+The AI component is advisory. It should not independently grant permissions or override the authorization system.
+
+## Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React, TypeScript, Vite |
+| Backend | Node.js, TypeScript, Express |
+| Database | PostgreSQL |
+| Database hosting | Neon |
+| Object storage | Supabase Storage |
+| Testing | Vitest |
+| Build tooling | TypeScript compiler, Vite |
+| Frontend/backend hosting | Render |
+| Audit integrity | HMAC-SHA256 |
+
+## Live Deployment
+
+The deployed application is available at:
+
+- **Frontend:** https://trustvault-frontend-3scb.onrender.com
+- **Backend health endpoint:** https://trustvault-1ndr.onrender.com/api/health
+
+The frontend uses the production API base URL configured through the `VITE_API_URL` environment variable.
+
+The deployed system relies on PostgreSQL and Supabase Storage. Production credentials and secrets must be configured through the relevant hosting environment, not committed to the repository.
+
+Free hosting services may take time to wake up after inactivity.
+
+## Local Development Setup
 
 ### Prerequisites
-- Node.js **v20+** or **v22+** / **v26+** (built using native `node:sqlite` for zero native build dependencies on Windows/Linux/macOS)
-- npm v10+
 
-### Installation & Test Execution
+- Node.js 20 or later
+- npm
+- Git
+- Access to a configured PostgreSQL database
+- A configured Supabase project and Storage bucket
+
+### 1. Clone the repository
+
 ```bash
-# 1. Clone repository and navigate to workspace
-git clone <repository-url>
-cd trustvault
+git clone https://github.com/Chaitanya06-source/TrustVault.git
+cd TrustVault
+```
 
-# 2. Install dependencies (server and client)
+### 2. Install dependencies
+
+```bash
 npm install
 npm --prefix client install
+```
 
-# 3. Seed database with roles, accounts, and sample confidential documents
+### 3. Configure environment variables
+
+Create a local `.env` file based on the environment configuration required by the project.
+
+The application requires a PostgreSQL connection and Supabase Storage configuration. Set all other required application secrets and settings according to the project's configuration files.
+
+Typical storage and database settings include:
+
+```dotenv
+DATABASE_URL=your_postgresql_connection_string
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_SECRET_KEY=your_supabase_secret_key
+SUPABASE_STORAGE_BUCKET=trustvault-documents
+```
+
+These are **placeholders, not working credentials**. Replace them locally with your own values. Check the project configuration for any additional required variables.
+
+- Never commit `.env` to GitHub.
+- Never paste production secrets into public issues or documentation.
+- Use separate development credentials and secrets.
+- Do not use example values as production secrets.
+
+### 4. Prepare the database
+
+After configuring the environment, run the project's seed command if the database is ready for initialization:
+
+```bash
 npm run seed
+```
 
-# 4. Run automated security test suite (proves isolation, revocation & tamper detection)
-npm test
+Only seed a database you intend to initialize with the project's development or evaluation data. Do not run a development seed against a production database without understanding its effects.
 
-# 5. Run cryptographic audit chain verification CLI
+### 5. Run the automated tests
+
+For the current local test setup, load environment variables from `.env` explicitly:
+
+```bash
+node --env-file=.env node_modules/vitest/vitest.mjs run
+```
+
+The test suite requires the relevant environment variables to be available. Keep credentials private and do not include `.env` in commits.
+
+### 6. Verify the audit chain
+
+```bash
 npm run audit:verify
+```
 
-# 6. Start full platform (both backend API and frontend UI)
+### 7. Start the application
+
+```bash
 npm run dev
 ```
 
-Visit the application in your browser:
-* **Frontend Application**: `http://localhost:3000` (or `http://localhost:4000` when running production build)
-* **Backend API**: `http://localhost:4000/api`
+Open the frontend using the development URL printed by Vite in the terminal. The backend API runs on its configured port, currently `4000` in the local setup.
+
+## Testing
+
+TrustVault uses automated tests to check security behavior and application correctness.
+
+The latest recorded local verification for this project passed **36 tests across 10 test files**. Test results can change as the codebase evolves; run the commands above to verify the current checkout.
+
+Important test areas include:
+
+| Test area | What it checks |
+|---|---|
+| Document security isolation | Unauthorized users cannot access protected documents |
+| Immediate revocation | Revoked access is rejected on subsequent requests |
+| Audit tamper detection | Changes to chained audit records are detected |
+| Upload validation | Disallowed file types and unsafe filenames are rejected |
+| AI advisory safety | AI recommendations do not independently grant permissions |
+| Authorization regression | Tests detect failures when required access checks are removed |
+
+Test files are located in [`server/tests/`](server/tests/).
+
+## API Reference
+
+The following table summarizes the documented API surface. Actual access depends on the implemented authorization rules and request validation.
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/health` | GET | Health check |
+| `/api/auth/login` | POST | Authenticate a user |
+| `/api/auth/me` | GET | Retrieve the authenticated user's profile |
+| `/api/auth/users` | GET | Retrieve users for permission selection |
+| `/api/documents` | GET | List documents visible to the caller |
+| `/api/documents` | POST | Upload a document |
+| `/api/documents/:id` | GET | Retrieve document metadata |
+| `/api/documents/:id` | PUT | Update supported document information |
+| `/api/documents/:id` | DELETE | Delete an owned document |
+| `/api/documents/:id/download` | GET | Download an authorized document |
+| `/api/documents/:id/permissions` | GET | List document permissions |
+| `/api/documents/:id/permissions` | POST | Grant document permissions |
+| `/api/documents/:id/permissions/:userId` | DELETE | Revoke a user's document permission |
+| `/api/audit` | GET | Retrieve authorized audit records |
+| `/api/audit/verify` | GET | Verify audit-chain integrity |
+| `/api/admin/alerts` | GET | Retrieve administrative security alerts |
+| `/api/admin/metrics` | GET | Retrieve administrative metrics |
+| `/api/admin/users/:id/toggle` | POST | Activate or deactivate a user |
+| `/api/ai/recommend` | POST | Generate AI access recommendations |
+| `/api/ai/confirm` | POST | Process a human-confirmed recommendation |
+
+All protected endpoints must be accessed using the authentication and request formats expected by the backend.
+
+## Design Decisions
+
+### Explicit document permissions instead of inherited folder access
+
+Explicit grants make it easier to reason about which users can access individual documents and reduce accidental permission inheritance.
+
+### Backend-mediated downloads instead of public sharing links
+
+Public unauthenticated links make identity verification and reliable access control more difficult. TrustVault is designed around authenticated, permission-checked access.
+
+### Immediate revocation instead of long-lived download tokens
+
+The backend can check the current permission state when a download is requested. Previously downloaded copies cannot, however, be remotely erased from a recipient's device.
+
+### Human approval instead of autonomous AI permission changes
+
+AI can help users evaluate sensitivity and sharing decisions, but permission changes remain subject to application authorization and explicit human confirmation.
+
+### Auditability instead of relying only on application logs
+
+A cryptographic hash chain makes unauthorized changes to linked audit records detectable when verification is performed with the correct secret. It complements, rather than replaces, database protection, secret management, and operational monitoring.
+
+## Project Documentation
+
+- [Threat model](THREATS.md) — Documented security threats and mitigations.
+- [AI interaction notes](PROMPTS.md) — Project-related AI interaction and development notes.
+- [Backend source code](server/src/)
+- [Automated tests](server/tests/)
 
 ---
 
-## 2. Seed Credentials for Evaluation
+## Security and Responsible Use
 
-The database is pre-seeded with five test accounts covering all platform roles. The front-end also features a **Fast Persona Switcher** toolbar at the top of the screen to switch identities with a single click.
+TrustVault is a security-focused software project. Its protections should be validated in the target deployment before it is used for sensitive or regulated information.
 
-| Role | Account Name | Email | Password | Intended Test Behavior |
-| :--- | :--- | :--- | :--- | :--- |
-| **Administrator** | Audit Administrator | `admin@trustvault.internal` | `AdminPassword123!` | Verifies cryptographic audit chain, inspects security alert anomalies (e.g. repeated denied probes by Eve), manages account activations. **Cannot read confidential document bytes without owner grant.** |
-| **Document Owner** | Alice (Finance Director) | `alice@trustvault.internal` | `AlicePassword123!` | Uploads financial documents, grants access to Bob, revokes access immediately, deletes owned documents, inspects document audit trail. |
-| **Document Owner** | Charlie (HR Director) | `charlie@trustvault.internal` | `CharliePassword123!` | Holds strictly confidential executive salary letters. **Bob and Eve have 0 access to these files.** |
-| **Viewer** | Bob (Financial Analyst) | `bob@trustvault.internal` | `BobPassword123!` | Can view metadata and download only documents explicitly granted by Alice. Receives HTTP 403 on ungranted documents. Cannot grant access to others. |
-| **Attacker** | Eve (Unauthorized) | `eve@external.org` | `EvePassword123!` | Holds 0 permissions. Attempts to read, download, search, or probe documents return HTTP 403 and are permanently chained into the audit ledger as `ACCESS_DENIED_*`. |
+Security depends on correct configuration, secure secret handling, database and storage permissions, reliable authorization checks, and appropriate operational monitoring.
 
----
-
-## 3. The Three Non-Negotiables: How TrustVault Delivers
-
-### Non-Negotiable #1: A document is reachable only by someone who was granted it. The server decides, every time.
-* **Storage Isolation**: Uploaded files are stored under random non-predictable UUIDs in an isolated directory (`storage/files/`) outside the public web root. There are **zero static URLs** and zero direct file paths.
-* **Database-Enforced Authorization**: Every document request (`/api/documents/:id`, `/api/documents/:id/download`, etc.) executes a live SQL check against `documents` and `document_permissions`. If no grant exists, the server immediately denies the request.
-* **Search Isolation**: The search query itself applies row-level filtering (`(d.owner_id = :userId OR dp.user_id = :userId)`). An unauthorized user cannot even discover that a confidential document exists.
-* **Browser Security Headers**: Downloads are streamed with:
-  ```http
-  Content-Disposition: attachment; filename="sanitized_name"
-  X-Content-Type-Options: nosniff
-  Content-Security-Policy: default-src 'none'
-  Cache-Control: no-store, no-cache, must-revalidate, private
-  Pragma: no-cache
-  ```
-
-### Non-Negotiable #2: You can prove who reached it. An audit trail that can be quietly altered is not evidence.
-* **Cryptographic HMAC-SHA256 Hash Chain**: Each audit record is chained to the previous record's hash, forming an append-only cryptographic ledger:
-  $$\text{Hash} = \text{HMAC-SHA256}(\text{SECRET}, \text{sequence} \parallel \text{timestamp} \parallel \text{actor} \parallel \text{action} \parallel \text{target} \parallel \text{status} \parallel \text{prev\_hash})$$
-  Block $0$ links to a Genesis Hash ($64$ zeros).
-* **Tamper Verification**: The endpoint `GET /api/audit/verify` and CLI script `npm run audit:verify` recalculate all hashes sequentially. If an internal administrator or attacker modifies even a single byte in the database, the chain breaks and the exact corrupted record index is identified.
-* **Refused Attempts Recorded**: Every unauthorized attempt (view, download, edit, delete, grant) is committed to the audit ledger as `ACCESS_DENIED_*` before returning HTTP 403.
-
-### Non-Negotiable #3: Taking access away works immediately.
-* **Zero Long-Lived Pre-Signed URLs**: Pre-signed cloud storage URLs (e.g. S3 15-minute tokens) create an unacceptable window of vulnerability. TrustVault proxies all bytes through the application server with real-time DB lookups.
-* **Instant Revocation Effect**: When an owner calls `DELETE /api/documents/:id/permissions/:userId`, the grant is deleted from `document_permissions`. Any subsequent request from that user—even 1 millisecond later—returns HTTP 403.
-* **Automated Proof**: Tested and verified in [`server/tests/immediate_revocation.test.ts`](file:///server/tests/immediate_revocation.test.ts).
-
----
-
-## 4. Permission Model (In Our Own Words)
-
-TrustVault uses a **Zero-Trust, Owner-Centric Discretionary Access Control (DAC)** model combined with **Strict Role Separation of Duties**:
-
-1. **Document Ownership**: The user who uploads a document is its permanent owner. Only the owner can:
-   - Grant 'view' or 'edit' permissions to named users
-   - Revoke permissions with immediate effect
-   - Update document versions or metadata
-   - Delete the document
-   - View the document's audit history
-2. **Permission Levels per Document**:
-   - `view`: Allows reading document metadata and downloading the file stream.
-   - `edit`: Allows updating metadata and uploading replacement file versions. Cannot grant access or delete.
-   - `none`: User cannot read, download, or discover the document.
-3. **The Administrator Boundary (Separation of Duties)**:
-   - In many flawed systems, "Admin" is given superuser rights to read all confidential company documents.
-   - In TrustVault, **the Administrator cannot read or download confidential document contents unless explicitly granted by the owner**. The Administrator oversees system health, verifies cryptographic audit integrity, and monitors security alert anomalies. This prevents executive salary or client contract leaks via rogue IT administrators.
-
----
-
-## 5. Where AI Fits (and Where It Must Not Decide)
-
-TrustVault includes an **AI Access Advisor & Sensitivity Classifier**:
-* **Advisory Role Only**: When uploading or sharing a document, the AI analyzes the title, category, and context to propose a sensitivity level (Confidential, Restricted, Internal) and least-privilege recipient recommendations.
-* **The Non-Negotiable Machine Boundary**: The AI **never widens or applies permissions on its own**.
-* **Audited Human Confirmation**: The document owner must review the suggestion in the UI and click "Confirm". Both the generated recommendation (`AI_ADVISORY_SUGGESTION_GENERATED`) and the human decision (`AI_ADVISORY_CONFIRMED`) are permanently chained into the audit ledger.
-
----
-
-## 6. API Documentation & Access Control Matrix
-
-| Endpoint | Method | Allowed Caller Roles | Minimum Document Permission | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `/api/auth/login` | POST | Public | None | Authenticates user; returns JWT token. |
-| `/api/auth/me` | GET | Authenticated | None | Returns active user profile. |
-| `/api/auth/users` | GET | Authenticated | None | Lists users for permission selection. |
-| `/api/documents` | POST | `owner`, `admin` | None | Uploads and validates new document. |
-| `/api/documents` | GET | Authenticated | Filtered | Lists documents caller owns or has grants for. |
-| `/api/documents/:id` | GET | Authenticated | `view` or `owner` | Retrieves document metadata. |
-| `/api/documents/:id/download` | GET | Authenticated | `view` or `owner` | Streams raw file bytes with anti-cache headers. |
-| `/api/documents/:id` | PUT | Authenticated | `edit` or `owner` | Updates metadata or uploads replacement version. |
-| `/api/documents/:id` | DELETE | Authenticated | `owner` only | Deletes document and cleans up vault storage. |
-| `/api/documents/:id/permissions` | GET | Authenticated | `owner` only | Lists active named grants for document. |
-| `/api/documents/:id/permissions` | POST | Authenticated | `owner` only | Grants 'view' or 'edit' to named user. |
-| `/api/documents/:id/permissions/:userId` | DELETE | Authenticated | `owner` only | Revokes permission with immediate effect. |
-| `/api/audit` | GET | `admin`, `owner` | Filtered | Admin sees system-wide; Owner sees their docs. |
-| `/api/audit/verify` | GET | `admin`, `owner` | None | Recalculates and verifies cryptographic hash chain. |
-| `/api/admin/alerts` | GET | `admin` only | None | Security anomaly alert feed (denied probes). |
-| `/api/admin/metrics` | GET | `admin` only | None | Document count, storage size, and audit telemetry. |
-| `/api/admin/users/:id/toggle` | POST | `admin` only | None | Deactivates/activates user account immediately. |
-| `/api/ai/recommend` | POST | Authenticated | None | Proposes least-privilege access policy. |
-| `/api/ai/confirm` | POST | Authenticated | `owner` only | Applies human-confirmed AI recommendations. |
-
----
-
-## 7. Automated Test Suite (Proving Security Invariants)
-
-Run the full suite with:
-```bash
-npm test
-```
-
-### The 24 Automated Security Tests:
-1. **Document Security Isolation** ([`security_isolation.test.ts`](file:///server/tests/security_isolation.test.ts)):
-   - Proves ungranted user cannot view metadata (403 Forbidden).
-   - Proves ungranted user cannot download bytes (403 Forbidden).
-   - Proves search queries do not leak existence of private documents.
-   - Proves ungranted user cannot edit or delete another user's document.
-   - Proves viewer cannot grant access to third parties.
-   - Proves unauthenticated requests are universally rejected (401).
-2. **Immediate Revocation** ([`immediate_revocation.test.ts`](file:///server/tests/immediate_revocation.test.ts)):
-   - Verifies owner can grant access -> viewer downloads file -> owner revokes -> viewer download immediately fails with 403 with zero delay.
-3. **Tamper-Evident Audit Ledger** ([`audit_trail_tamper_detection.test.ts`](file:///server/tests/audit_trail_tamper_detection.test.ts)):
-   - Verifies refused access attempts are recorded as `DENIED`.
-   - Proves direct SQL alteration of an audit record causes cryptographic verification failure and pinpoints the exact corrupted block.
-   - Proves row deletion causes sequence continuity failure.
-4. **Upload Validation & Malware Defense** ([`upload_validation.test.ts`](file:///server/tests/upload_validation.test.ts)):
-   - Blocks disguised Windows PE executables (`MZ` header) masked as `.pdf`.
-   - Blocks disallowed file extensions (`.exe`, `.sh`).
-   - Sanitizes directory traversal filenames (`../../etc/passwd`).
-5. **AI Advisory Safety** ([`ai_access_advisor.test.ts`](file:///server/tests/ai_access_advisor.test.ts)):
-   - Proves AI recommendations do not widen access without explicit human confirmation.
-6. **Authorization Check Sensitivity Proof** ([`auth_check_removal_demonstration.test.ts`](file:///server/tests/auth_check_removal_demonstration.test.ts)):
-   - Proves that removing the authorization check causes the security tests to fail.
-
----
-
-## 8. What We Deliberately Chose Not to Build (and Why)
-
-1. **Folder-Based Nested Permission Inheritance**:
-   * *Why Left Out*: Folder inheritance is the #1 cause of catastrophic data leakage in enterprise document systems ("Someone is given access to a folder so they can see one file, and they can now see forty"). TrustVault uses explicit per-document grants.
-2. **Pre-Signed Cloud Storage Download URLs**:
-   * *Why Left Out*: Pre-signed S3 tokens cannot be revoked instantly without complex IAM rewriting. All file streams pass through the application server with real-time permission evaluation.
-3. **Public Unauthenticated Sharing Links**:
-   * *Why Left Out*: Secret link sharing ("anyone with the link can view") destroys auditability because the server cannot prove who actually opened the file. TrustVault requires named user authentication for every read.
-4. **Client-Side DRM / Screen Watermarking**:
-   * *Why Left Out*: Browser-based canvas overlays and DOM watermarking provide false security and can be bypassed in DevTools or via mobile phone cameras (the "Analogue Hole"). We prioritized cryptographically provable server-side non-repudiation.
-
----
-
-## 9. Deliverables Reference
-
-* [`THREATS.md`](file:///THREATS.md) — 15+ threat vectors modeled, mitigated, and verified.
-* [`PROMPTS.md`](file:///PROMPTS.md) — 5 dated AI interaction entries documenting flawed code and security fixes.
-* [`server/src/services/auditService.ts`](file:///server/src/services/auditService.ts) — HMAC-SHA256 cryptographic hash chain engine.
-* [`server/src/services/permissionService.ts`](file:///server/src/services/permissionService.ts) — Real-time zero-trust authorization and immediate revocation logic.
-* [`server/tests/`](file:///server/tests/) — Complete automated penetration and regression test suite.
+**Never upload real confidential documents to an unverified development environment.**
