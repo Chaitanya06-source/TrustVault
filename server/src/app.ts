@@ -62,7 +62,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/ai', aiRouter);
 
 // Serve built frontend assets if present
-const CLIENT_DIST = path.resolve(__dirname, '../../client/dist');
+const CLIENT_DIST = path.resolve(process.cwd(), 'client', 'dist');
 if (fs.existsSync(CLIENT_DIST)) {
   app.use(express.static(CLIENT_DIST));
   app.get('*', (req: Request, res: Response, next: NextFunction) => {

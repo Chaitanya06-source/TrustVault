@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 
 // Root directory anchors
-export const ROOT_DIR = path.resolve(__dirname, '../../');
+export const ROOT_DIR = process.cwd();
 export const DATA_DIR = path.join(ROOT_DIR, 'data');
 export const STORAGE_DIR = path.join(ROOT_DIR, 'storage', 'files');
 
