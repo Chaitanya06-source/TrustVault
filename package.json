@@ -10,7 +10,7 @@
     "build:server": "tsc -p tsconfig.json",
     "build:client": "npm --prefix client run build",
     "build": "npm run build:server && npm run build:client",
-    "start": "node --env-file=.env dist/server/src/server.js",
+    "start": "node dist/server/src/server.js",
     "seed": "tsx server/src/db/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
