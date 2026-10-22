@@ -1,8 +1,10 @@
-﻿import { v4 as uuidv4 } from 'uuid';
+
+import { v4 as uuidv4 } from 'uuid';
 import { postgresQuery } from '../db/postgres';
 import { FileService } from './fileService';
 import { PgPermissionService, AccessRole } from './permissionService.pg';
 import { PgAuditService } from './auditService.pg';
+import { SupabaseFileService } from './supabaseFileService';
 
 export interface DocumentRecord {
   id: string;
@@ -24,7 +26,11 @@ export interface DocumentRecord {
   user_permission?: AccessRole;
 }
 
-type Requester = { id: string; email: string; role: string };
+type Requester = {
+  id: string;
+  email: string;
+  role: string;
+};
 
 function httpError(message: string, statusCode: number): Error {
   const error = new Error(message) as Error & { statusCode: number };
@@ -35,7 +41,11 @@ function httpError(message: string, statusCode: number): Error {
 export class DocumentService {
   public static async uploadDocument(
     owner: Requester,
-    file: { originalname: string; buffer: Buffer; size: number },
+    file: {
+      originalname: string;
+      buffer: Buffer;
+      size: number;
+    },
     metadata: {
       title: string;
       description?: string;
@@ -47,7 +57,11 @@ export class DocumentService {
   ): Promise<DocumentRecord> {
     const validation = FileService.validateUpload(file);
 
-    if (!validation.valid || !validation.sanitizedFilename || !validation.verifiedMime) {
+    if (
+      !validation.valid ||
+      !validation.sanitizedFilename ||
+      !validation.verifiedMime
+    ) {
       await PgAuditService.recordEvent({
         actorId: owner.id,
         actorEmail: owner.email,
@@ -63,10 +77,14 @@ export class DocumentService {
         ipAddress,
         userAgent
       });
-      throw httpError(`File validation failed: ${validation.error}`, 400);
+
+      throw httpError(
+        `File validation failed: ${validation.error}`,
+        400
+      );
     }
 
-    const stored = FileService.saveToVault(
+    const stored = await SupabaseFileService.saveToVault(
       file.buffer,
       validation.sanitizedFilename,
       validation.verifiedMime
@@ -87,13 +105,32 @@ export class DocumentService {
           checksum_sha256, version, created_at, updated_at
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
-          id, title, description, category, classification, owner.id,
-          stored.storagePath, stored.originalFilename, stored.fileSizeBytes,
-          stored.mimeType, stored.checksumSha256, 1, now, now
+          id,
+          title,
+          description,
+          category,
+          classification,
+          owner.id,
+          stored.storagePath,
+          stored.originalFilename,
+          stored.fileSizeBytes,
+          stored.mimeType,
+          stored.checksumSha256,
+          1,
+          now,
+          now
         ]
       );
     } catch (error) {
-      FileService.deleteFromVault(stored.storagePath);
+      try {
+        await SupabaseFileService.deleteFromVault(stored.storagePath);
+      } catch (cleanupError) {
+        console.error(
+          'Failed to clean up Supabase file after database insert failure:',
+          cleanupError
+        );
+      }
+
       throw error;
     }
 
@@ -119,7 +156,11 @@ export class DocumentService {
     });
 
     return {
-      id, title, description, category, classification,
+      id,
+      title,
+      description,
+      category,
+      classification,
       owner_id: owner.id,
       storage_path: stored.storagePath,
       original_filename: stored.originalFilename,
@@ -139,7 +180,11 @@ export class DocumentService {
     ipAddress = '127.0.0.1',
     userAgent = 'client'
   ): Promise<DocumentRecord> {
-    const access = await PgPermissionService.checkAccess(documentId, requester.id, 'view');
+    const access = await PgPermissionService.checkAccess(
+      documentId,
+      requester.id,
+      'view'
+    );
 
     if (!access.allowed) {
       await PgAuditService.recordEvent({
@@ -155,21 +200,28 @@ export class DocumentService {
         ipAddress,
         userAgent
       });
+
       throw httpError(access.reason || 'Access denied', 403);
     }
 
-    const result = await postgresQuery<DocumentRecord & {
-      owner_name: string;
-      owner_email: string;
-    }>(
+    const result = await postgresQuery<
+      DocumentRecord & {
+        owner_name: string;
+        owner_email: string;
+      }
+    >(
       `SELECT d.*, u.name AS owner_name, u.email AS owner_email
-       FROM documents d JOIN users u ON u.id = d.owner_id
+       FROM documents d
+       JOIN users u ON u.id = d.owner_id
        WHERE d.id = $1`,
       [documentId]
     );
 
     const doc = result.rows[0];
-    if (!doc) throw httpError('Document not found', 404);
+
+    if (!doc) {
+      throw httpError('Document not found', 404);
+    }
 
     doc.user_permission = access.role;
     return doc;
@@ -181,13 +233,17 @@ export class DocumentService {
     ipAddress = '127.0.0.1',
     userAgent = 'client'
   ): Promise<{
-    filePath: string;
+    buffer: Buffer;
     filename: string;
     mimeType: string;
     fileSize: number;
     checksum: string;
   }> {
-    const access = await PgPermissionService.checkAccess(documentId, requester.id, 'view');
+    const access = await PgPermissionService.checkAccess(
+      documentId,
+      requester.id,
+      'view'
+    );
 
     if (!access.allowed) {
       await PgAuditService.recordEvent({
@@ -199,19 +255,35 @@ export class DocumentService {
         targetId: documentId,
         targetName: access.documentTitle || 'Unknown Document',
         status: 'DENIED',
-        details: { reason: access.reason, attemptedDownload: true },
+        details: {
+          reason: access.reason,
+          attemptedDownload: true
+        },
         ipAddress,
         userAgent
       });
-      throw httpError('Access denied: You do not have permission to download this document', 403);
+
+      throw httpError(
+        'Access denied: You do not have permission to download this document',
+        403
+      );
     }
 
     const result = await postgresQuery<DocumentRecord>(
       'SELECT * FROM documents WHERE id = $1',
       [documentId]
     );
+
     const doc = result.rows[0];
-    if (!doc) throw httpError('Document not found', 404);
+
+    if (!doc) {
+      throw httpError('Document not found', 404);
+    }
+
+    // Fetch from private Supabase Storage only after permission checks.
+    const buffer = await SupabaseFileService.getFileBuffer(
+      doc.storage_path
+    );
 
     await PgAuditService.recordEvent({
       actorId: requester.id,
@@ -232,7 +304,7 @@ export class DocumentService {
     });
 
     return {
-      filePath: FileService.getStorageFilePath(doc.storage_path),
+      buffer,
       filename: doc.original_filename,
       mimeType: doc.mime_type,
       fileSize: Number(doc.file_size_bytes),
@@ -255,7 +327,10 @@ export class DocumentService {
     const clauses = ['(d.owner_id = $1 OR dp.user_id = $1)'];
     const params: unknown[] = [requester.id];
 
-    const addFilter = (sql: (n: number) => string, value: unknown) => {
+    const addFilter = (
+      sql: (n: number) => string,
+      value: unknown
+    ) => {
       params.push(value);
       clauses.push(sql(params.length));
     };
@@ -264,12 +339,29 @@ export class DocumentService {
       const q = `%${filters.query.trim()}%`;
       params.push(q);
       const p = params.length;
-      clauses.push(`(d.title ILIKE $${p} OR d.description ILIKE $${p} OR d.original_filename ILIKE $${p})`);
+      clauses.push(
+        `(d.title ILIKE $${p} OR d.description ILIKE $${p} OR d.original_filename ILIKE $${p})`
+      );
     }
-    if (filters.category) addFilter(n => `d.category = $${n}`, filters.category.trim());
-    if (filters.ownerId) addFilter(n => `d.owner_id = $${n}`, filters.ownerId);
-    if (filters.fromDate) addFilter(n => `d.created_at >= $${n}`, filters.fromDate);
-    if (filters.toDate) addFilter(n => `d.created_at <= $${n}`, filters.toDate);
+
+    if (filters.category) {
+      addFilter(
+        n => `d.category = $${n}`,
+        filters.category.trim()
+      );
+    }
+
+    if (filters.ownerId) {
+      addFilter(n => `d.owner_id = $${n}`, filters.ownerId);
+    }
+
+    if (filters.fromDate) {
+      addFilter(n => `d.created_at >= $${n}`, filters.fromDate);
+    }
+
+    if (filters.toDate) {
+      addFilter(n => `d.created_at <= $${n}`, filters.toDate);
+    }
 
     const where = clauses.join(' AND ');
 
@@ -282,7 +374,10 @@ export class DocumentService {
       params
     );
 
-    const limit = Math.min(Math.max(Number(filters.limit) || 50, 1), 200);
+    const limit = Math.min(
+      Math.max(Number(filters.limit) || 50, 1),
+      200
+    );
     const offset = Math.max(Number(filters.offset) || 0, 0);
     const pageParams = [...params, limit, offset];
 
@@ -322,12 +417,20 @@ export class DocumentService {
       description?: string;
       category?: string;
       classification?: string;
-      newFile?: { originalname: string; buffer: Buffer; size: number };
+      newFile?: {
+        originalname: string;
+        buffer: Buffer;
+        size: number;
+      };
     },
     ipAddress = '127.0.0.1',
     userAgent = 'client'
   ): Promise<DocumentRecord> {
-    const access = await PgPermissionService.checkAccess(documentId, updater.id, 'edit');
+    const access = await PgPermissionService.checkAccess(
+      documentId,
+      updater.id,
+      'edit'
+    );
 
     if (!access.allowed) {
       await PgAuditService.recordEvent({
@@ -343,15 +446,23 @@ export class DocumentService {
         ipAddress,
         userAgent
       });
-      throw httpError(access.reason || 'Edit permission required', 403);
+
+      throw httpError(
+        access.reason || 'Edit permission required',
+        403
+      );
     }
 
     const result = await postgresQuery<DocumentRecord>(
       'SELECT * FROM documents WHERE id = $1',
       [documentId]
     );
+
     const existing = result.rows[0];
-    if (!existing) throw httpError('Document not found', 404);
+
+    if (!existing) {
+      throw httpError('Document not found', 404);
+    }
 
     let storagePath = existing.storage_path;
     let filename = existing.original_filename;
@@ -362,15 +473,27 @@ export class DocumentService {
     let newStoragePath: string | undefined;
 
     if (updates.newFile) {
-      const validation = FileService.validateUpload(updates.newFile);
-      if (!validation.valid || !validation.sanitizedFilename || !validation.verifiedMime) {
-        throw httpError(`File validation failed: ${validation.error}`, 400);
+      const validation = FileService.validateUpload(
+        updates.newFile
+      );
+
+      if (
+        !validation.valid ||
+        !validation.sanitizedFilename ||
+        !validation.verifiedMime
+      ) {
+        throw httpError(
+          `File validation failed: ${validation.error}`,
+          400
+        );
       }
-      const stored = FileService.saveToVault(
+
+      const stored = await SupabaseFileService.saveToVault(
         updates.newFile.buffer,
         validation.sanitizedFilename,
         validation.verifiedMime
       );
+
       newStoragePath = stored.storagePath;
       storagePath = stored.storagePath;
       filename = stored.originalFilename;
@@ -380,10 +503,26 @@ export class DocumentService {
       version += 1;
     }
 
-    const title = updates.title !== undefined ? updates.title.trim() : existing.title;
-    const description = updates.description !== undefined ? (updates.description.trim() || null) : existing.description;
-    const category = updates.category !== undefined ? updates.category.trim() : existing.category;
-    const classification = updates.classification !== undefined ? updates.classification.trim() : existing.classification;
+    const title =
+      updates.title !== undefined
+        ? updates.title.trim()
+        : existing.title;
+
+    const description =
+      updates.description !== undefined
+        ? updates.description.trim() || null
+        : existing.description;
+
+    const category =
+      updates.category !== undefined
+        ? updates.category.trim()
+        : existing.category;
+
+    const classification =
+      updates.classification !== undefined
+        ? updates.classification.trim()
+        : existing.classification;
+
     const now = new Date().toISOString();
 
     try {
@@ -394,16 +533,50 @@ export class DocumentService {
           mime_type=$8, checksum_sha256=$9, version=$10, updated_at=$11
          WHERE id=$12`,
         [
-          title, description, category, classification, storagePath,
-          filename, size, mime, checksum, version, now, documentId
+          title,
+          description,
+          category,
+          classification,
+          storagePath,
+          filename,
+          size,
+          mime,
+          checksum,
+          version,
+          now,
+          documentId
         ]
       );
     } catch (error) {
-      if (newStoragePath) FileService.deleteFromVault(newStoragePath);
+      if (newStoragePath) {
+        try {
+          await SupabaseFileService.deleteFromVault(
+            newStoragePath
+          );
+        } catch (cleanupError) {
+          console.error(
+            'Failed to clean up replacement file after database update failure:',
+            cleanupError
+          );
+        }
+      }
+
       throw error;
     }
 
-    if (newStoragePath) FileService.deleteFromVault(existing.storage_path);
+    // Database update succeeded; remove the previous object if replaced.
+    if (newStoragePath) {
+      try {
+        await SupabaseFileService.deleteFromVault(
+          existing.storage_path
+        );
+      } catch (cleanupError) {
+        console.error(
+          'Failed to delete previous Supabase file after replacement:',
+          cleanupError
+        );
+      }
+    }
 
     await PgAuditService.recordEvent({
       actorId: updater.id,
@@ -446,7 +619,11 @@ export class DocumentService {
     ipAddress = '127.0.0.1',
     userAgent = 'client'
   ): Promise<void> {
-    const access = await PgPermissionService.checkAccess(documentId, requester.id, 'owner');
+    const access = await PgPermissionService.checkAccess(
+      documentId,
+      requester.id,
+      'owner'
+    );
 
     if (!access.allowed) {
       await PgAuditService.recordEvent({
@@ -462,18 +639,39 @@ export class DocumentService {
         ipAddress,
         userAgent
       });
-      throw httpError(access.reason || 'Only the owner can delete this document', 403);
+
+      throw httpError(
+        access.reason || 'Only the owner can delete this document',
+        403
+      );
     }
 
     const result = await postgresQuery<DocumentRecord>(
       'SELECT * FROM documents WHERE id = $1',
       [documentId]
     );
-    const doc = result.rows[0];
-    if (!doc) throw httpError('Document not found', 404);
 
-    await postgresQuery('DELETE FROM documents WHERE id = $1', [documentId]);
-    FileService.deleteFromVault(doc.storage_path);
+    const doc = result.rows[0];
+
+    if (!doc) {
+      throw httpError('Document not found', 404);
+    }
+
+    await postgresQuery(
+      'DELETE FROM documents WHERE id = $1',
+      [documentId]
+    );
+
+    try {
+      await SupabaseFileService.deleteFromVault(
+        doc.storage_path
+      );
+    } catch (storageError) {
+      console.error(
+        'Document record was deleted, but Supabase file cleanup failed:',
+        storageError
+      );
+    }
 
     await PgAuditService.recordEvent({
       actorId: requester.id,

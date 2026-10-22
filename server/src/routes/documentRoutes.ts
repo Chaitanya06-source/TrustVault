@@ -1,3 +1,4 @@
+
 import { Router, Response } from 'express';
 import { z } from 'zod';
 import {
@@ -157,7 +158,7 @@ documentRouter.get(
 
 /**
  * GET /api/documents/:id/download
- * Download a document with security headers.
+ * Download a document from private Supabase Storage.
  */
 documentRouter.get(
   '/:id/download',
@@ -175,8 +176,9 @@ documentRouter.get(
       res.setHeader('Content-Type', fileInfo.mimeType);
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename="${fileInfo.filename}"`
+        `attachment; filename="${fileInfo.filename.replace(/["\\\r\n]/g, '_')}"`
       );
+      res.setHeader('Content-Length', fileInfo.buffer.length);
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Content-Security-Policy', "default-src 'none'");
       res.setHeader(
@@ -186,15 +188,11 @@ documentRouter.get(
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('ETag', `"${fileInfo.checksum}"`);
 
-      res.sendFile(fileInfo.filePath, (err) => {
-        if (err && !res.headersSent) {
-          res.status(500).json({
-            error: 'Unable to send the requested file',
-            code: 'DOWNLOAD_FAILED'
-          });
-        }
-      });
+      res.send(fileInfo.buffer);
     } catch (err) {
+      if (res.headersSent) {
+        return;
+      }
       sendError(res, err, 500, 'DOWNLOAD_FAILED');
     }
   }
@@ -210,6 +208,7 @@ documentRouter.put(
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { ipAddress, userAgent } = requestDetails(req);
+
       const updates: {
         title?: string;
         description?: string;

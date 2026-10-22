@@ -10,7 +10,7 @@
     "build:server": "tsc -p tsconfig.json",
     "build:client": "npm --prefix client run build",
     "build": "npm run build:server && npm run build:client",
-    "start": "node dist/server/src/server.js",
+    "start": "node --env-file=.env dist/server/src/server.js",
     "seed": "tsx server/src/db/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -27,6 +27,7 @@
   "author": "TrustVault Engineering Team",
   "license": "UNLICENSED",
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "express": "^4.21.2",
