@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthenticatedRequest } from '../middlewares/authMiddleware';
-import { AiAdvisoryService } from '../services/aiAdvisoryService';
+import { AiAdvisoryService } from '../services/aiAdvisoryService.pg';
 
 export const aiRouter = Router();
 
@@ -26,23 +26,25 @@ const confirmSchema = z.object({
   )
 });
 
-/**
- * POST /api/ai/recommend
- * Generates AI Least-Privilege Access Advisory.
- * Does NOT apply permissions automatically.
- */
-aiRouter.post('/recommend', (req: AuthenticatedRequest, res: Response) => {
+aiRouter.post('/recommend', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const parsed = recommendSchema.safeParse(req.body);
+
     if (!parsed.success) {
-      res.status(400).json({ error: 'Validation failed', details: parsed.error.issues });
+      res.status(400).json({
+        error: 'Validation failed',
+        details: parsed.error.issues
+      });
       return;
     }
 
-    const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const ipAddress =
+      (req.headers['x-forwarded-for'] as string) ||
+      req.socket.remoteAddress ||
+      '127.0.0.1';
     const userAgent = req.headers['user-agent'] || 'client';
 
-    const recommendation = AiAdvisoryService.generateRecommendation(
+    const recommendation = await AiAdvisoryService.generateRecommendation(
       req.user!,
       parsed.data.documentTitle,
       parsed.data.category,
@@ -53,28 +55,31 @@ aiRouter.post('/recommend', (req: AuthenticatedRequest, res: Response) => {
     );
 
     res.json({ recommendation });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    res.status(500).json({ error: message });
   }
 });
 
-/**
- * POST /api/ai/confirm
- * Human owner confirms, modifies, or rejects the AI recommendation.
- * Explicitly records the human decision and grants approved permissions into the audit trail.
- */
-aiRouter.post('/confirm', (req: AuthenticatedRequest, res: Response) => {
+aiRouter.post('/confirm', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const parsed = confirmSchema.safeParse(req.body);
+
     if (!parsed.success) {
-      res.status(400).json({ error: 'Validation failed', details: parsed.error.issues });
+      res.status(400).json({
+        error: 'Validation failed',
+        details: parsed.error.issues
+      });
       return;
     }
 
-    const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const ipAddress =
+      (req.headers['x-forwarded-for'] as string) ||
+      req.socket.remoteAddress ||
+      '127.0.0.1';
     const userAgent = req.headers['user-agent'] || 'client';
 
-    const result = AiAdvisoryService.confirmDecision(
+    const result = await AiAdvisoryService.confirmDecision(
       req.user!,
       parsed.data.documentId,
       parsed.data.advisoryId,
@@ -89,7 +94,8 @@ aiRouter.post('/confirm', (req: AuthenticatedRequest, res: Response) => {
       message: `AI recommendation ${parsed.data.decision.toLowerCase()} and ${result.appliedGrantsCount} permission grant(s) applied.`,
       result
     });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Request failed';
+    res.status(400).json({ error: message });
   }
 });

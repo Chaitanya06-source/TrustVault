@@ -1,20 +1,25 @@
 import { app } from './app';
 import { CONFIG } from './config';
-import { getDatabase } from './db/database';
-import { runSeed } from './db/seed';
+import { postgresPool } from './db/postgres';
 
-// Ensure database and schema are initialized
-getDatabase();
-// Run seed if fresh database
-runSeed();
+async function startServer() {
+  try {
+    await postgresPool.query('SELECT 1');
 
-const server = app.listen(CONFIG.PORT, () => {
-  console.log(`=======================================================`);
-  console.log(`   TrustVault Zero-Trust Security Core is RUNNING     `);
-  console.log(`   Port:       http://localhost:${CONFIG.PORT}        `);
-  console.log(`   Storage:    ${CONFIG.STORAGE_DIR}                  `);
-  console.log(`   Database:   ${CONFIG.DB_PATH}                      `);
-  console.log(`=======================================================`);
-});
+    const server = app.listen(CONFIG.PORT, () => {
+      console.log('=======================================================');
+      console.log('   TrustVault Zero-Trust Security Core is RUNNING     ');
+      console.log(`   Port:       http://localhost:${CONFIG.PORT}`);
+      console.log(`   Storage:    ${CONFIG.STORAGE_DIR}`);
+      console.log('   Database:   Neon PostgreSQL');
+      console.log('=======================================================');
+    });
 
-export { server };
+    return server;
+  } catch (error) {
+    console.error('Failed to connect to PostgreSQL:', error);
+    process.exitCode = 1;
+  }
+}
+
+void startServer();
