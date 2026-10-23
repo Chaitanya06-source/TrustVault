@@ -23,6 +23,7 @@ TrustVault is a secure document-sharing platform built around server-side author
 - [Local Development Setup](#local-development-setup)
 - [Testing](#testing)
 - [API Reference](#api-reference)
+- [Known Limitations](#known-limitations)
 - [Design Decisions](#design-decisions)
 - [Project Documentation](#project-documentation)
 
@@ -109,7 +110,7 @@ TrustVault avoids relying on long-lived, pre-signed download links as its docume
 
 ### 4. Cryptographic audit integrity
 
-TrustVault uses an HMAC-SHA256 hash chain to make unauthorized modifications to audit records detectable.
+TrustVault is designed to use an HMAC-SHA256 sequential hash chain (not a Merkle tree) to make changes to covered audit records detectable when the correct secret and serialization are used.
 
 Conceptually, each record incorporates its contents and the previous record's hash:
 
@@ -134,7 +135,7 @@ The verification endpoint is:
 GET /api/audit/verify
 ```
 
-A successful verification indicates that the checked records are consistent with the chain and verification key. It does not, by itself, prove that every possible event was logged or that the signing secret has never been compromised.
+A successful verification would indicate that the checked records are consistent with the chain and verification key; it would not prove every possible event was logged or that the signing secret was never compromised. **Known deployment limitation (2026-10-23):** the deployed verification endpoint has returned `valid: false`, `brokenAt: 1`, `Audit record hash mismatch`. The root cause is unresolved. This result is not by itself proof of malicious tampering. Do not rely on production audit verification as passing until the cause is diagnosed and a clean verification is observed.
 
 **Important:** Keep the audit secret private and separate from public source code. Protect access to the database and signing secret independently.
 
@@ -188,7 +189,7 @@ The deployed application is available at:
 
 The frontend uses the production API base URL configured through the `VITE_API_URL` environment variable.
 
-The deployed system relies on PostgreSQL and Supabase Storage. Production credentials and secrets must be configured through the relevant hosting environment, not committed to the repository.
+The deployed system relies on Neon PostgreSQL and Supabase Storage. Configure `DATABASE_URL`, storage settings, `JWT_SECRET`, and `AUDIT_HMAC_SECRET` through the hosting environment; never commit their values. Use a newly generated secret of at least 32 bytes for each secret and do not reuse the database password.
 
 Free hosting services may take time to wake up after inactivity.
 
@@ -220,7 +221,7 @@ npm --prefix client install
 
 Create a local `.env` file based on the environment configuration required by the project.
 
-The application requires a PostgreSQL connection and Supabase Storage configuration. Set all other required application secrets and settings according to the project's configuration files.
+The deployed PostgreSQL path requires a `DATABASE_URL`, Supabase Storage configuration, and strong local-only values for `JWT_SECRET` and `AUDIT_HMAC_SECRET` (each at least 32 bytes in production). Use the actual variable names documented in `server/src/config.ts` and the storage service. Do not paste secret values into issues, videos, or source control. The repository's legacy SQLite test harness is not a substitute for integration tests against PostgreSQL.
 
 Typical storage and database settings include:
 
@@ -276,7 +277,7 @@ Open the frontend using the development URL printed by Vite in the terminal. The
 
 TrustVault uses automated tests to check security behavior and application correctness.
 
-The latest recorded local verification for this project passed **36 tests across 10 test files**. Test results can change as the codebase evolves; run the commands above to verify the current checkout.
+A previous local verification reported **36 tests across 10 test files**. This is historical, not a claim that the current PostgreSQL production path has passed the same tests: some security test files still initialize the legacy SQLite test harness. Run the commands above and review the current output before claiming a fresh pass.
 
 Important test areas include:
 
@@ -344,12 +345,21 @@ A cryptographic hash chain makes unauthorized changes to linked audit records de
 
 ## Project Documentation
 
-- [Threat model](THREATS.md) — Documented security threats and mitigations.
-- [AI interaction notes](PROMPTS.md) — Project-related AI interaction and development notes.
+- [Threat model](THREATS.md) — Threats, mitigations, and explicitly stated verification gaps.
+- [AI interaction notes](PROMPTS.md) — AI prompts, identified errors, and engineering follow-up.
+- [API and authorization reference](docs/API.md) — Endpoints and route-level access expectations.
+- [Five-minute demo script](docs/DEMO_SCRIPT.md) — Recording plan; this is a script, not a recorded video.
 - [Backend source code](server/src/)
 - [Automated tests](server/tests/)
 
 ---
+
+## Known Limitations
+
+- Production audit-chain verification has reported a hash mismatch at sequence 1; its cause remains unresolved. The verifier has not been represented as passing.
+- Some automated security tests still use the legacy SQLite test harness. Their results do not alone establish that every deployed PostgreSQL path behaves identically.
+- The repository includes a five-minute demo script, but a recorded demo video must still be created and linked separately.
+- Review endpoint authorization against `docs/API.md` before extending the API; the API reference describes current route-level behavior, including endpoints that are merely authenticated rather than admin-only.
 
 ## Security and Responsible Use
 
