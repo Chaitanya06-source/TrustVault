@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
-import { app } from '../src/app';
+import { app } from '../src/legacyTestApp';
 import { getDatabase } from '../src/db/database';
 import { runSeed } from '../src/db/seed';
 import { AuditService } from '../src/services/auditService';
