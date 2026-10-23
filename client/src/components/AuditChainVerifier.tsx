@@ -1,9 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, ShieldAlert, RefreshCw, KeyRound, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, RefreshCw, KeyRound } from 'lucide-react';
 import { api } from '../api/client';
 
+interface VerificationResult {
+  valid: boolean;
+  totalRecords: number;
+  brokenAt?: number;
+  message?: string;
+  failureReason?: string;
+  latestHash?: string;
+  verifiedAt?: string;
+}
+
 export const AuditChainVerifier: React.FC = () => {
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<VerificationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -12,17 +22,30 @@ export const AuditChainVerifier: React.FC = () => {
     setError(null);
     try {
       const data = await api.verifyAuditChain();
-      setResult(data.verification);
-    } catch (err: any) {
-      setError(err.message || 'Verification failed');
+      // Support both the current nested API response and the older top-level shape.
+      const verification = data?.verification ?? data;
+      if (typeof verification?.valid !== 'boolean') {
+        throw new Error('The verification endpoint returned an unexpected response.');
+      }
+      setResult(verification);
+    } catch (err: unknown) {
+      setResult(null);
+      setError(err instanceof Error ? err.message : 'Verification failed');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    runVerification();
+    void runVerification();
   }, []);
+
+  const verificationMessage = result?.message || result?.failureReason ||
+    (result?.valid ? 'Audit chain integrity verified' : 'The audit chain could not be verified.');
+
+  const validVerifiedAt = result?.verifiedAt && !Number.isNaN(Date.parse(result.verifiedAt))
+    ? new Date(result.verifiedAt).toLocaleString()
+    : null;
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
@@ -58,43 +81,45 @@ export const AuditChainVerifier: React.FC = () => {
 
       {result && (
         <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* Status Box */}
           <div className={`p-4 rounded-lg border ${
             result.valid
               ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
               : 'bg-rose-950/30 border-rose-500/40 text-rose-300'
           }`}>
             <div className="flex items-center gap-2 mb-1">
-              {result.valid ? (
-                <ShieldCheck className="w-5 h-5 text-emerald-400" />
-              ) : (
-                <ShieldAlert className="w-5 h-5 text-rose-400" />
-              )}
+              {result.valid
+                ? <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                : <ShieldAlert className="w-5 h-5 text-rose-400" />}
               <span className="font-semibold text-xs uppercase tracking-wider">
-                {result.valid ? 'Chain Status: Pristine' : 'Chain Tampering Detected!'}
+                {result.valid ? 'Chain Status: Verified' : 'Chain Verification Failed'}
               </span>
             </div>
             <p className="text-[11px] opacity-90">
               {result.valid
-                ? `100% verified across all ${result.totalRecords} contiguous audit blocks.`
-                : result.failureReason}
+                ? `Verified across all ${result.totalRecords} contiguous audit records.`
+                : verificationMessage}
             </p>
+            {!result.valid && result.brokenAt !== undefined && (
+              <p className="mt-1 text-[11px] font-semibold">First detected issue at sequence #{result.brokenAt}.</p>
+            )}
           </div>
 
-          {/* Block Count */}
           <div className="p-4 rounded-lg bg-slate-950/50 border border-slate-800">
-            <div className="text-[11px] text-slate-400 uppercase tracking-wider font-medium">Total Chained Blocks</div>
+            <div className="text-[11px] text-slate-400 uppercase tracking-wider font-medium">Total Audit Records</div>
             <div className="text-xl font-bold text-white mt-1 font-mono">{result.totalRecords}</div>
-            <div className="text-[10px] text-slate-500 mt-1">Every download, view, and refusal recorded</div>
+            <div className="text-[10px] text-slate-500 mt-1">Records checked by the server-side verifier</div>
           </div>
 
-          {/* Latest Hash */}
           <div className="p-4 rounded-lg bg-slate-950/50 border border-slate-800 overflow-hidden">
             <div className="text-[11px] text-slate-400 uppercase tracking-wider font-medium">Latest Cryptographic Head</div>
-            <div className="text-xs text-emerald-400 font-mono mt-1.5 truncate" title={result.latestHash}>
-              {result.latestHash ? result.latestHash : 'Genesis Block'}
+            <div className="text-xs text-emerald-400 font-mono mt-1.5 truncate" title={result.latestHash || undefined}>
+              {result.latestHash || (result.valid ? 'Genesis Block (empty ledger)' : 'Unavailable — verification failed')}
             </div>
-            <div className="text-[10px] text-slate-500 mt-1">HMAC-SHA256 verified at {new Date(result.verifiedAt).toLocaleTimeString()}</div>
+            <div className="text-[10px] text-slate-500 mt-1">
+              {result.valid
+                ? (validVerifiedAt ? `Verified at ${validVerifiedAt}` : 'Verification time unavailable')
+                : 'A head hash is not reported when integrity verification fails.'}
+            </div>
           </div>
         </div>
       )}
