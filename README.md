@@ -241,13 +241,14 @@ These are **placeholders, not working credentials**. Replace them locally with y
 
 ### 4. Prepare the database
 
-After configuring the environment, run the project's seed command if the database is ready for initialization:
+The package script `npm run seed` targets the legacy seed module and should not be assumed to initialize the deployed PostgreSQL database. For a disposable PostgreSQL development/evaluation database, the PostgreSQL-specific scripts are:
 
 ```bash
-npm run seed
+npx tsx server/src/db/migrate.ts
+npx tsx server/src/db/seed.pg.ts
 ```
 
-Only seed a database you intend to initialize with the project's development or evaluation data. Do not run a development seed against a production database without understanding its effects.
+Run these only after confirming `DATABASE_URL` points to the intended database. Review the migration and seed behavior before running them; never run initialization commands against a database containing data you need to preserve. The seed may skip initialization when users already exist.
 
 ### 5. Run the automated tests
 
@@ -264,6 +265,8 @@ The test suite requires the relevant environment variables to be available. Keep
 ```bash
 npm run audit:verify
 ```
+
+This script and its runtime environment must be checked before use. The deployed PostgreSQL endpoint has returned a mismatch at record 1; see [Known Limitations](#known-limitations). Do not interpret the existence of this command as evidence that the production chain currently verifies.
 
 ### 7. Start the application
 
