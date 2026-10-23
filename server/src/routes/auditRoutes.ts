@@ -86,7 +86,10 @@ auditRouter.get(
   async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const verification = await PgAuditService.verifyChainIntegrity();
-      res.json({ verification });
+
+      // Preserve the nested response while also supporting clients expecting top-level fields.
+      // The cryptographic verification logic remains unchanged.
+      res.json({ ...verification, verification });
     } catch (err: unknown) {
       console.error('[Audit] Chain verification failed:', err);
       res.status(500).json({ error: 'Unable to verify audit chain' });
