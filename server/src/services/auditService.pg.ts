@@ -41,6 +41,8 @@ export interface PgVerificationResult {
   totalRecords: number;
   brokenAt?: number;
   message: string;
+  latestHash?: string;
+  verifiedAt?: string;
 }
 
 export class PgAuditService {
@@ -180,6 +182,10 @@ export class PgAuditService {
       valid: true,
       totalRecords: result.rows.length,
       message: 'Audit chain integrity verified',
+      latestHash: result.rows.length > 0
+        ? result.rows[result.rows.length - 1].record_hash
+        : '',
+      verifiedAt: new Date().toISOString(),
     };
   }
 
