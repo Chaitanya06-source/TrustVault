@@ -86,7 +86,13 @@ auditRouter.get(
   async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const verification = await PgAuditService.verifyChainIntegrity();
-      res.json({ verification });
+
+      // Return the verification fields at the top level for clients that
+      // consume { valid, totalRecords, latestHash, verifiedAt }, while keeping
+      // the nested property for clients already using { verification: ... }.
+      // This is a response-compatibility fix only; it does not bypass or
+      // weaken the cryptographic verification performed by PgAuditService.
+      res.json({ ...verification, verification });
     } catch (err: unknown) {
       console.error('[Audit] Chain verification failed:', err);
       res.status(500).json({ error: 'Unable to verify audit chain' });
