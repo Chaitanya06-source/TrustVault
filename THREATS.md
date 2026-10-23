@@ -23,7 +23,7 @@ TrustVault is engineered under the principle that **access control is a security
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **THREAT-01** | Insecure Direct Object Reference (IDOR) on Metadata & Downloads | Elevation of Privilege / Info Disclosure | **CRITICAL** | Real-time SQL JOIN against `document_permissions` table; unpredictable UUIDs; direct download endpoint validation. | `server/tests/security_isolation.test.ts` |
 | **THREAT-02** | Pre-Signed S3 URL & Caching Bypass on Revocation | Elevation of Privilege / Repudiation | **CRITICAL** | Zero pre-signed URLs. Streaming proxy via application server; `Cache-Control: no-store` headers; real-time DB check. | `server/tests/immediate_revocation.test.ts` |
-| **THREAT-03** | Silent Alteration / Deletion of Audit Trail (Rogue DBA / Insider) | Tampering / Repudiation | **CRITICAL** | Cryptographic HMAC-SHA256 sequential hash chaining (Merkle-style ledger). Any modification breaks verification. | `server/tests/audit_trail_tamper_detection.test.ts` |
+| **THREAT-03** | Silent Alteration / Deletion of Audit Trail (Rogue DBA / Insider) | Tampering / Repudiation | **CRITICAL** | HMAC-SHA256 sequential hash chain (not a Merkle tree). A change to covered fields should cause verification to fail when the correct key and canonical serialization are used. Production verification is currently failing at record 1; the root cause is unresolved. | `server/tests/audit_trail_tamper_detection.test.ts` |
 | **THREAT-04** | Unrecorded Refusal Attempts (Silent Reconnaissance) | Repudiation / Info Disclosure | **HIGH** | `ACCESS_DENIED_VIEW` and `ACCESS_DENIED_DOWNLOAD` events are chained into the audit ledger before returning 403. | `server/tests/audit_trail_tamper_detection.test.ts` |
 | **THREAT-05** | Multipart Path Traversal (`../../etc/passwd`) | Tampering / Elevation of Privilege | **HIGH** | Filename sanitization stripping paths and control bytes. Files stored strictly by UUID in an isolated vault directory. | `server/tests/upload_validation.test.ts` |
 | **THREAT-06** | MIME Confusion & Disguised Executable Uploads | Tampering / Elevation of Privilege | **HIGH** | Deep magic byte verification (reads first 512 bytes) verifying headers (`%PDF`, `PK\x03\x04`, `PNG`) and blocking `MZ`/`ELF`. | `server/tests/upload_validation.test.ts` |
@@ -137,10 +137,18 @@ Security engineering requires transparently documenting what was intentionally n
 
 ---
 
-## 5. Verification Checklist for Evaluators
+## 5. Known Verification Gaps (2026-10-23)
+
+The deployed `GET /api/audit/verify` endpoint has returned `valid: false`, `brokenAt: 1`, with `Audit record hash mismatch`. This must be treated as an unresolved verification failure, not as proof of malicious tampering and not as a successful integrity check. Potential causes include a key mismatch, differences between stored field representations and the values used to calculate the hash, or historical records written under a different implementation. These are hypotheses, not established causes.
+
+Do not rotate the production HMAC secret, rewrite hashes, delete records, or reseed the database as a shortcut: such actions can make the evidence harder to diagnose and may invalidate existing records. The next engineering step is a controlled read-only comparison of the first stored record's fields, the configured secret identity (never its value), and the exact serialization used by both writer and verifier. Once diagnosed, test the fix against a disposable database and verify the production chain without mutating its history.
+
+The existing security test files referenced in this threat model include tests that initialize the legacy SQLite harness. Their passing results do not, by themselves, prove that the deployed PostgreSQL implementation is covered by the same tests. Treat each mitigation as locally tested only where the relevant test actually exercises the implementation under discussion.
+
+## 6. Verification Checklist for Evaluators
 
 When evaluating TrustVault, execute the automated security verification suite:
 ```bash
 npm test
 ```
-All 24 security test cases across 6 suites verify the mitigations documented in this matrix.
+Run the current test suite and inspect the result. Historical counts are not a guarantee for the current branch. Confirm that tests exercise the PostgreSQL services used in deployment; SQLite-based tests alone do not establish production-path coverage. Verify the deployed audit endpoint separately and record its actual result.
