@@ -170,3 +170,17 @@ Across the 7-day sprint, the following security constraints were enforced as the
 | **Intrusion Detection**| Silent 403 on authorization failure | Unrecorded probing / blind reconnaissance | Atomically log `ACCESS_DENIED_*` before returning HTTP 403 | [`bc8a758`](https://github.com/Chaitanya06-source/TrustVault/commit/bc8a758) |
 | **Upload Security** | Trust client-provided `file.mimetype` | Disguised executable (.exe with .pdf name) accepted | Binary magic-byte inspection (checking `%PDF`, blocking `MZ`/`ELF`) | [`fe41bbc`](https://github.com/Chaitanya06-source/TrustVault/commit/fe41bbc) |
 | **AI Boundaries** | Autonomous permission expansion | AI hallucination leaks confidential documents | Mandatory human-in-the-loop confirmation with audited decision | [`2b2fb2c`](https://github.com/Chaitanya06-source/TrustVault/commit/2b2fb2c) |
+
+
+### Entry 6: Production Audit Verification Mismatch and Documentation Correction
+* **Date**: October 23, 2026
+* **Component**: PostgreSQL audit-chain verifier and submission documentation
+* **Prompt Summary**:
+  > “Help diagnose the production audit verifier reporting a hash mismatch at record 1, without deleting records or changing the secret blindly, and make the submission documents match the actual deployed state.”
+* **What the AI Produced / Investigation Result**:
+  The deployed endpoint returned `valid: false`, `brokenAt: 1`, and `Audit record hash mismatch` for a chain containing audit records. Source inspection found that the PostgreSQL writer and verifier calculate HMAC-SHA256 over ordered record fields. Some security tests still initialize the older SQLite database and seed path, so their results do not prove that the deployed PostgreSQL path is covered.
+* **What Was Wrong or Uncertain (Specifically)**:
+  The original documentation described audit tamper detection as verified and could be read as implying that production verification passed. The actual cause of the first-record mismatch is not established. A mismatch alone does not distinguish a secret mismatch, historical serialization differences, stored field representation differences, or malicious modification.
+* **What We Did Instead**:
+  We did not change the production secret, rewrite hashes, delete records, or claim a passing verifier. We updated the README and threat model to disclose the observed failure, distinguish the sequential HMAC chain from a Merkle tree, and explain the test-coverage limitation. We added a route-level API reference and a five-minute demo script that explicitly instructs the presenter to show the real verifier result.
+* **Status**: Documentation corrected; root-cause diagnosis and production verification fix remain unfinished. This entry records the investigation and correction, not a claim that the verifier is fixed.
