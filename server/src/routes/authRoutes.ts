@@ -4,6 +4,7 @@ import { PgAuthService } from '../services/authService.pg';
 import {
   authenticate,
   AuthenticatedRequest,
+  requireRole,
 } from '../middlewares/authMiddleware';
 
 export const authRouter = Router();
@@ -69,6 +70,7 @@ authRouter.get(
 authRouter.get(
   '/users',
   authenticate,
+  requireRole('owner', 'admin'),
   async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const users = await PgAuthService.listUsers();
