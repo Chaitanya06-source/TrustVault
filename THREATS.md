@@ -1,6 +1,6 @@
 # TrustVault Threat Model & STRIDE Security Analysis (THREATS.md)
 
-> **Document Status**: Production Security Baseline  
+> **Document Status**: Challenge threat model; includes unresolved production verification gaps  
 > **Classification**: Internal Security Specification  
 > **Architectural Paradigm**: Zero-Trust, Server-Authoritative, Cryptographically Tamper-Evident  
 
@@ -9,6 +9,10 @@
 ## 1. Executive Security Philosophy
 
 TrustVault is engineered under the principle that **access control is a security invariant, not an application feature**. A document platform that leaks even a single unauthorized byte is completely compromised. 
+
+### Scope and evidence standard
+
+This document distinguishes design intent from verified behaviour. A test name in the matrix is not proof that the deployed PostgreSQL implementation was exercised. The deployed audit verifier has returned a mismatch at sequence 1; production audit integrity is currently **not verified**.
 
 ### Core Non-Negotiable Axioms
 1. **The Server Decides, Every Time**: Access is evaluated at the database layer at the millisecond of byte transfer. UI hiding, client-side routing, and ephemeral pre-signed tokens are rejected as architectural antipatterns.
@@ -152,3 +156,31 @@ When evaluating TrustVault, execute the automated security verification suite:
 npm test
 ```
 Run the current test suite and inspect the result. Historical counts are not a guarantee for the current branch. Confirm that tests exercise the PostgreSQL services used in deployment; SQLite-based tests alone do not establish production-path coverage. Verify the deployed audit endpoint separately and record its actual result.
+
+## 7. Additional Threats and Explicitly Unresolved Risks
+
+The following risks are not marked as mitigated merely because they are documented. They require engineering work and/or environment-specific tests before a mitigation can be claimed.
+
+| ID | Risk | Current state | Impact | Next action |
+|---|---|---|---|---|
+| THREAT-16 | Audit-tail truncation | A local hash chain does not prove that its newest rows still exist. Removing a suffix can leave a valid prefix. | Privileged DB access could hide recent events. | Anchor sequence number and head hash in an independently administered append-only system and compare it during verification. |
+| THREAT-17 | HMAC secret in application environment | Accepted limitation: a server/process compromise that exposes the secret may let an attacker recompute hashes. | Chain authenticity is not independent of the application host. | Use managed secret storage/KMS with restricted access and documented key rotation. |
+| THREAT-18 | Login brute force | No rate limiting or lockout is confirmed in the inspected login route. | Password guessing and resource exhaustion. | Add IP/account-based rate limits, progressive delays, monitoring and tests. |
+| THREAT-19 | JWT theft, XSS and logout | JWT lifetime is eight hours. Frontend storage and logout invalidation need verification; stateless tokens do not become invalid merely because the UI logs out. | A stolen token may be replayed until expiry or account deactivation. | Prefer HttpOnly/Secure/SameSite cookies or short-lived tokens with server-side revocation/refresh rotation; test logout and XSS assumptions. |
+| THREAT-20 | CORS origin reflection | Current app configuration uses origin: true with credentials rather than a strict allowlist. CORS is not authorization, but broad reflection increases browser-based exposure. | Unintended browser origins may be permitted. | Allow only the deployed frontend and required development origins; test allowed and rejected origins. |
+| THREAT-21 | Document existence oracle | Some handlers may distinguish missing documents (404) from existing-but-forbidden documents (403). | Authenticated attackers may infer document ID existence. | Use consistent responses for missing and unauthorized documents where appropriate; test status/body/timing. |
+| THREAT-22 | ZIP-based Office validation | .docx/.xlsx validation checks ZIP signature, not full package structure or decompressed size. | ZIP bombs, malformed packages or macro-enabled files renamed to allowed extensions may bypass policy or consume resources. | Validate package parts, reject macro-enabled types, limit entries and uncompressed size, and scan when available. |
+| THREAT-23 | Revocation during an active download | Authorization is checked at request time. Bytes already sent cannot be recalled, and a request that passed the check may finish after revocation. | An in-progress transfer may complete after revocation. | Define revocation as blocking subsequent requests; if stronger semantics are required, implement cancellation-aware streaming and test concurrent revocation. |
+| THREAT-24 | Ephemeral deployment filesystem | Current file service uses local storage/files; durable object storage or a persistent Render disk is not established by the inspected source. | File bytes may disappear on restart/redeploy while DB metadata remains. | Configure persistent storage or implement private object storage and test upload/download after redeploy. |
+| THREAT-25 | Legacy tests versus deployed PostgreSQL | Some tests use legacyTestApp and SQLite rather than production PostgreSQL services. | Passing tests may miss regressions in the deployed path. | Add disposable-PostgreSQL integration tests for IDOR, revocation, permissions, denied logging and audit verification. |
+| THREAT-26 | Recipient directory enumeration | On this branch, GET /api/auth/users is restricted to owner/admin and has a new route-level regression test; the test still needs to be run. | Previously any authenticated viewer could enumerate recipient emails. | Run the test and confirm viewers get 403 and the service is not called. |
+
+## 8. Verification Status — Do Not Overclaim
+
+- Observed in investigation notes: the deployed audit verifier returned `valid: false`, `brokenAt: 1`, and `Audit record hash mismatch`.
+- Not established: the root cause, whether the configured secret matches every historical row, or whether the database was tampered with.
+- Not established: persistence of uploaded file bytes across Render restarts/redeploys.
+- Not established: whether tests detect removal of the production PostgreSQL download authorization check. The existing test named `auth_check_removal_demonstration.test.ts` uses the legacy SQLite harness and directly replaces a service method; it is not a reliable mutation test of the deployed route.
+- Implemented on this branch but not yet executed here: a role restriction on `GET /api/auth/users` and a route-level regression test.
+
+These statements are intentionally conservative. Change an item to verified only after recording the exact test/command and its actual result.
