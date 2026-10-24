@@ -31,10 +31,27 @@ app.use(
   })
 );
 
-// CORS configuration
+// CORS is a browser policy, not an authorization mechanism. Keep the
+// allowed origins explicit and configurable for the deployed frontend.
+const allowedOrigins = new Set(
+  (process.env.CORS_ORIGINS ||
+    'https://trustvault-frontend-3scb.onrender.com,http://localhost:3000,http://localhost:5173')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+);
+
 app.use(
   cors({
-    origin: true, // Allow frontend dev server
+    origin: (origin, callback) => {
+      // Requests without an Origin header (e.g. CLI/server-to-server) are
+      // not browser CORS requests. Browser origins must match the allowlist.
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']

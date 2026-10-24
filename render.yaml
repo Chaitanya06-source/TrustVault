@@ -3,10 +3,12 @@ services:
     name: trustvault-platform
     env: node
     plan: free
-    buildCommand: npm install && npm --prefix client install && npm --prefix client run build && npm run seed
-    startCommand: npx tsx server/src/server.ts
+    buildCommand: npm install && npm --prefix client install && npm run build
+    startCommand: npx tsx server/src/db/migrate.ts && npx tsx server/src/db/seed.pg.ts && npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 4000
+      - key: CORS_ORIGINS
+        value: https://trustvault-frontend-3scb.onrender.com
