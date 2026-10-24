@@ -174,7 +174,7 @@ The AI component is advisory. It should not independently grant permissions or o
 | Backend | Node.js, TypeScript, Express |
 | Database | PostgreSQL |
 | Database hosting | Neon |
-| Object storage | Supabase Storage |
+| File storage | Local application filesystem at storage/files; persistence across redeploys is not established |
 | Testing | Vitest |
 | Build tooling | TypeScript compiler, Vite |
 | Frontend/backend hosting | Render |
@@ -189,7 +189,7 @@ The deployed application is available at:
 
 The frontend uses the production API base URL configured through the `VITE_API_URL` environment variable.
 
-The deployed system relies on Neon PostgreSQL and Supabase Storage. Configure `DATABASE_URL`, storage settings, `JWT_SECRET`, and `AUDIT_HMAC_SECRET` through the hosting environment; never commit their values. Use a newly generated secret of at least 32 bytes for each secret and do not reuse the database password.
+The deployed backend uses Neon PostgreSQL. The inspected file service writes uploaded bytes to the local `storage/files` directory; persistent disk/object storage across redeploys is not established. Configure `DATABASE_URL`, `JWT_SECRET`, `AUDIT_HMAC_SECRET`, and `CORS_ORIGINS` through the hosting environment; never commit their values. Use a newly generated secret of at least 32 bytes for each secret and do not reuse the database password.
 
 Free hosting services may take time to wake up after inactivity.
 
@@ -201,7 +201,7 @@ Free hosting services may take time to wake up after inactivity.
 - npm
 - Git
 - Access to a configured PostgreSQL database
-- A configured Supabase project and Storage bucket
+- A persistent Render disk or private object-storage service is required for durable uploads; this is not established in the current branch.
 
 ### 1. Clone the repository
 
@@ -221,7 +221,7 @@ npm --prefix client install
 
 Create a local `.env` file based on the environment configuration required by the project.
 
-The deployed PostgreSQL path requires a `DATABASE_URL`, Supabase Storage configuration, and strong local-only values for `JWT_SECRET` and `AUDIT_HMAC_SECRET` (each at least 32 bytes in production). Use the actual variable names documented in `server/src/config.ts` and the storage service. Do not paste secret values into issues, videos, or source control. The repository's legacy SQLite test harness is not a substitute for integration tests against PostgreSQL.
+The deployed PostgreSQL path requires a `DATABASE_URL` and strong values for `JWT_SECRET` and `AUDIT_HMAC_SECRET` (each at least 32 bytes in production). Set `CORS_ORIGINS` to a comma-separated explicit origin allowlist. Use the actual variable names documented in `server/src/config.ts` and the storage service. Do not paste secret values into issues, videos, or source control. The repository's legacy SQLite test harness is not a substitute for integration tests against PostgreSQL.
 
 Typical storage and database settings include:
 
@@ -354,6 +354,7 @@ A cryptographic hash chain makes unauthorized changes to linked audit records de
 - [AI interaction notes](PROMPTS.md) — AI prompts, identified errors, and engineering follow-up.
 - [API and authorization reference](docs/API.md) — Endpoints and route-level access expectations.
 - [Five-minute demo script](docs/DEMO_SCRIPT.md) — Recording plan; this is a script, not a recorded video.
+- [Project write-up](docs/PROJECT_WRITEUP.md) — Draft write-up that must be checked against the final deployed build.
 - [Backend source code](server/src/)
 - [Automated tests](server/tests/)
 
