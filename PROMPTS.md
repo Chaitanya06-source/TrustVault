@@ -184,3 +184,21 @@ Across the 7-day sprint, the following security constraints were enforced as the
 * **What We Did Instead**:
   We did not change the production secret, rewrite hashes, delete records, or claim a passing verifier. We updated the README and threat model to disclose the observed failure, distinguish the sequential HMAC chain from a Merkle tree, and explain the test-coverage limitation. We added a route-level API reference and a five-minute demo script that explicitly instructs the presenter to show the real verifier result.
 * **Status**: Documentation corrected; root-cause diagnosis and production verification fix remain unfinished. This entry records the investigation and correction, not a claim that the verifier is fixed.
+
+### Entry 7: Recipient Directory Exposure and Deployment Configuration Review
+* **Date**: October 24, 2026
+* **Component**: Recipient enumeration, CORS and token transport
+* **Prompt summary**:
+  > Review the PostgreSQL deployment branch for concrete authorization/documentation mismatches, restrict recipient listing to authorized roles, and remove avoidable browser token exposure without rewriting history.
+* **What the AI produced**:
+  The review identified that GET /api/auth/users used authentication middleware but did not enforce an owner/admin role, the CORS configuration reflected request origins with credentials, and the authentication middleware accepted tokens in a query parameter.
+* **What was wrong (specifically)**:
+  A viewer/external account could enumerate internal recipient emails. Query-string tokens can leak into logs/history/referrers. Broad CORS reflection is not authorization, but it weakens browser-origin boundaries.
+* **What changed**:
+  Added requireRole('owner', 'admin') to the recipient directory and a route-level regression test. Restricted CORS to an explicit configurable allowlist and removed query-string token extraction. Added documentation of unresolved risks and clarified that the audit verifier and local-file persistence are not verified.
+* **Commits**:
+  - Recipient role restriction: https://github.com/Chaitanya06-source/TrustVault/commit/343a326bccc9cd7b3964c7c28334df1345d9e3f5
+  - Regression test: https://github.com/Chaitanya06-source/TrustVault/commit/c1284ea9addc5949a739cd463edb06e5c2071c6d
+  - Remove query-string token support: https://github.com/Chaitanya06-source/TrustVault/commit/5d586fe14d8155b7776c473f3523695c5e7e11cc
+  - Restrict CORS origins: https://github.com/Chaitanya06-source/TrustVault/commit/71e33d50659a0c3922e6f4b9a6e59878cc97031e
+* **Verification status**: The source changes are committed on the fix/submission-readiness branch. The test suite/build and deployed behaviour still need to be run/verified; this entry does not claim a passing test or a deployed fix.
