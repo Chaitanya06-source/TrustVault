@@ -59,6 +59,7 @@ export class PgAuditService {
     detailsJson: string | null,
     ipAddress: string | null,
     prevHash: string | null,
+    secret: string = CONFIG.AUDIT_HMAC_SECRET,
   ): string {
     const data = [
       sequenceNumber, timestamp, actorId, actorEmail, actorRole,
@@ -67,7 +68,7 @@ export class PgAuditService {
     ].join('|');
 
     return crypto
-      .createHmac('sha256', CONFIG.AUDIT_HMAC_SECRET)
+      .createHmac('sha256', secret)
       .update(data)
       .digest('hex');
   }
@@ -159,13 +160,25 @@ export class PgAuditService {
         };
       }
 
-      const calculatedHash = this.computeHash(
-        sequenceNumber, row.timestamp, row.actor_id, row.actor_email,
-        row.actor_role, row.action, row.target_type, row.target_id,
-        row.status, row.details_json, row.ip_address, row.prev_hash,
-      );
+      // The active key signs new records. Optional legacy keys are verification-only.
+      // Set AUDIT_HMAC_LEGACY_SECRETS to a comma-separated list of old keys in the host environment.
+      const verificationSecrets = [
+        CONFIG.AUDIT_HMAC_SECRET,
+        ...(process.env.AUDIT_HMAC_LEGACY_SECRETS ?? '')
+          .split(',')
+          .map((secret) => secret.trim())
+          .filter(Boolean),
+      ];
+      const hashMatches = [...new Set(verificationSecrets)].some((secret) => {
+        const calculatedHash = this.computeHash(
+          sequenceNumber, row.timestamp, row.actor_id, row.actor_email,
+          row.actor_role, row.action, row.target_type, row.target_id,
+          row.status, row.details_json, row.ip_address, row.prev_hash, secret,
+        );
+        return calculatedHash === row.record_hash;
+      });
 
-      if (calculatedHash !== row.record_hash) {
+      if (!hashMatches) {
         return {
           valid: false,
           totalRecords: result.rows.length,
