@@ -43,6 +43,7 @@ export interface PgVerificationResult {
   message: string;
   latestHash?: string;
   verifiedAt?: string;
+  legacyKeyRecords?: number;
 }
 
 export class PgAuditService {
@@ -59,6 +60,7 @@ export class PgAuditService {
     detailsJson: string | null,
     ipAddress: string | null,
     prevHash: string | null,
+    secret: string = CONFIG.AUDIT_HMAC_SECRET,
   ): string {
     const data = [
       sequenceNumber, timestamp, actorId, actorEmail, actorRole,
@@ -67,7 +69,7 @@ export class PgAuditService {
     ].join('|');
 
     return crypto
-      .createHmac('sha256', CONFIG.AUDIT_HMAC_SECRET)
+      .createHmac('sha256', secret)
       .update(data)
       .digest('hex');
   }
@@ -143,6 +145,7 @@ export class PgAuditService {
 
     let expectedPrevHash = '';
     let expectedSequence = 1;
+    let legacyKeyRecords = 0;
 
     for (const row of result.rows) {
       const sequenceNumber = Number(row.sequence_number);
@@ -159,13 +162,26 @@ export class PgAuditService {
         };
       }
 
-      const calculatedHash = this.computeHash(
-        sequenceNumber, row.timestamp, row.actor_id, row.actor_email,
-        row.actor_role, row.action, row.target_type, row.target_id,
-        row.status, row.details_json, row.ip_address, row.prev_hash,
-      );
+      // The active key signs new records. Optional legacy keys are verification-only.
+      // Set AUDIT_HMAC_LEGACY_SECRETS to a comma-separated list of old keys in the host environment.
+      const verificationSecrets = [
+        CONFIG.AUDIT_HMAC_SECRET,
+        ...(process.env.AUDIT_HMAC_LEGACY_SECRETS ?? '')
+          .split(',')
+          .map((secret) => secret.trim())
+          .filter(Boolean),
+      ];
+      const uniqueSecrets = [...new Set(verificationSecrets)];
+      const matchedKeyIndex = uniqueSecrets.findIndex((secret) => {
+        const calculatedHash = this.computeHash(
+          sequenceNumber, row.timestamp, row.actor_id, row.actor_email,
+          row.actor_role, row.action, row.target_type, row.target_id,
+          row.status, row.details_json, row.ip_address, row.prev_hash, secret,
+        );
+        return calculatedHash === row.record_hash;
+      });
 
-      if (calculatedHash !== row.record_hash) {
+      if (matchedKeyIndex === -1) {
         return {
           valid: false,
           totalRecords: result.rows.length,
@@ -174,6 +190,7 @@ export class PgAuditService {
         };
       }
 
+      if (matchedKeyIndex > 0) legacyKeyRecords++;
       expectedPrevHash = row.record_hash;
       expectedSequence++;
     }
@@ -181,7 +198,10 @@ export class PgAuditService {
     return {
       valid: true,
       totalRecords: result.rows.length,
-      message: 'Audit chain integrity verified',
+      message: legacyKeyRecords > 0
+        ? `Audit chain links and hashes are consistent; ${legacyKeyRecords} record(s) matched legacy verification keys. This does not prove authenticity if a legacy key was exposed.`
+        : 'Audit chain integrity verified using the active key',
+      legacyKeyRecords,
       latestHash: result.rows.length > 0
         ? result.rows[result.rows.length - 1].record_hash
         : '',
