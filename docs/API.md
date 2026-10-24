@@ -1,76 +1,47 @@
 # TrustVault API and Authorization Reference
 
-This document reflects the Express route mounts and handlers on the `deploy-postgres` branch. All endpoints use the base path shown below. Unless noted as public, send a bearer token:
+This reference describes the current PostgreSQL route wiring on the fix/submission-readiness branch. It is not a substitute for endpoint-level integration tests. All endpoints use JSON unless marked as multipart.
 
-```http
-Authorization: Bearer <JWT>
-```
+## Authentication
 
-A valid token proves identity, not document permission. Document operations must still pass the service-level ownership/grant checks. Responses and status codes can vary with validation and service errors.
+Send Authorization: Bearer <JWT> for protected endpoints. Tokens currently expire after eight hours. The middleware re-reads the user record and rejects missing/deactivated users. Do not place tokens in URLs: query-string token support in middleware can expose tokens through logs, browser history and referrers; remove it before production use.
 
-## Health and authentication
+Roles: admin, owner, and viewer. Admin privileges do not automatically grant document-content access.
 
-| Method | Endpoint | Who may call it | Purpose / notes |
-|---|---|---|---|
-| GET | `/api/health` | Public | Service health response. |
-| POST | `/api/auth/login` | Public | JSON body: `email`, `password`; returns login result/token on success. Invalid input: 400; invalid credentials: 401; deactivated account: 403. |
-| GET | `/api/auth/me` | Any authenticated user | Return the current authenticated user. |
-| GET | `/api/auth/users` | Any authenticated user | List users for permission selection. Treat the result as account metadata, not document access. |
+## Routes
 
-## Documents
+| Method and path | Access expected/current route policy | Purpose / notes |
+|---|---|---|
+| GET /api/health | Public | Service health check; does not prove database integrity. |
+| POST /api/auth/login | Public | Email/password login. Rate limiting is not implemented in the inspected route. |
+| GET /api/auth/me | Any authenticated active user | Current user's profile. |
+| GET /api/auth/users | Owner/admin on this branch | Named recipient directory. A new route-level regression test was added; run it before deployment. |
+| GET /api/documents | Any authenticated user; results must be filtered by ownership/grants | Search/list accessible documents. Supports query/category/owner/date filters in route code. |
+| POST /api/documents | Owner/admin by route middleware | Multipart upload with file and metadata. |
+| GET /api/documents/:id | Authenticated; service must authorize owner/grant | Read metadata for an accessible document. |
+| GET /api/documents/:id/download | Authenticated; service must authorize owner/grant on each request | Download protected bytes. Never expose local storage paths. |
+| PUT /api/documents/:id | Authenticated; service must enforce owner/edit permission | Update metadata or replacement file, subject to service authorization. |
+| DELETE /api/documents/:id | Authenticated; service must enforce ownership | Delete an owned document. |
+| GET /api/documents/:id/permissions | Authenticated; permission service must restrict to owner | List named grants for a document. |
+| POST /api/documents/:id/permissions | Authenticated; permission service must restrict to owner | Grant view or edit to a named user. |
+| DELETE /api/documents/:id/permissions/:userId | Authenticated; permission service must restrict to owner | Revoke a named user's grant. Subsequent requests should be denied; already transmitted bytes cannot be recalled. |
+| GET /api/audit | Admin; owner only for their own document with documentId; viewer denied | Retrieve audit records. Owners must specify a document ID. |
+| GET /api/audit/verify | Any authenticated user in current route | Verifies the local chain. Production currently has a documented mismatch at sequence 1; do not treat it as passing until fixed. |
+| GET /api/admin/alerts | Admin only (router-level middleware) | View repeated-denial and document-probing alerts. |
+| GET /api/admin/metrics | Admin only (router-level middleware) | Aggregate document, audit and user metrics. |
+| POST /api/admin/users/:id/toggle | Admin only (router-level middleware) | Activate/deactivate a user; cannot toggle self through this route. |
+| POST /api/ai/recommend | Any authenticated user in current route; validate document ownership before passing a document ID | Generate rule-based sensitivity/recipient advice. It must not grant permissions automatically. |
+| POST /api/ai/confirm | Any authenticated user at route level; service must verify caller owns document and advisory | Apply only the caller-confirmed decision. Test owner/advisory binding carefully. |
 
-All `/api/documents` routes require authentication.
+## Important implementation caveats
 
-| Method | Endpoint | Who may call it | Purpose / notes |
-|---|---|---|---|
-| GET | `/api/documents` | Any authenticated user | Search/list documents visible to the caller. Optional query parameters include `q`, `category`, `ownerId`, `fromDate`, `toDate`, `limit`, and `offset`. Results must be access-filtered by the service. |
-| POST | `/api/documents` | Owner or admin role | Multipart upload; field `file` plus `title`, `category`, optional `description`, optional `classification` (`Public`, `Internal`, `Restricted`, `Confidential`). |
-| GET | `/api/documents/:id` | Authenticated user with access to that document | Retrieve metadata; service checks access. |
-| GET | `/api/documents/:id/download` | Authenticated user with view/edit access or owner | Download file through backend; service checks current access. The response uses attachment and no-store/security headers. |
-| PUT | `/api/documents/:id` | Authenticated user authorized by document service | Update supported metadata and/or upload a replacement file. The service decides whether the caller may edit. |
-| DELETE | `/api/documents/:id` | Authenticated user authorized by document service | Delete a document; service-level ownership/authorization applies. |
+- Several routes rely on service-level checks rather than route-level role middleware. Verify the service implementation and tests for every row marked service must enforce.
+- CORS currently reflects origins (origin: true) with credentials; use a strict origin allowlist.
+- Middleware accepts a token in the query string as well as a Bearer header. Remove query-string token support before production.
+- The deployed audit verifier has returned valid: false at sequence 1. Root cause is unresolved.
+- The local file-storage directory is not shown to be persistent across Render redeploys.
+- Some existing security tests use the legacy SQLite test app. They do not alone prove that the PostgreSQL production routes are safe.
 
-## Per-document permissions
+## Schema
 
-All permission routes require authentication. The service enforces who may manage a document's grants; callers should expect a 403 when they do not have the required authority.
-
-| Method | Endpoint | Who may call it | Purpose / request |
-|---|---|---|---|
-| GET | `/api/documents/:id/permissions` | Document owner / authorized manager | List grants for the document. |
-| POST | `/api/documents/:id/permissions` | Document owner / authorized manager | JSON body: `{ "userId": "<UUID>", "permissionLevel": "view" | "edit" }`; creates or updates a grant according to service rules. |
-| DELETE | `/api/documents/:id/permissions/:userId` | Document owner / authorized manager | Revoke the specified user's grant. Subsequent requests should be re-authorized against current database state. |
-
-## Audit and administration
-
-| Method | Endpoint | Who may call it | Purpose / notes |
-|---|---|---|---|
-| GET | `/api/audit` | Admin; document owner only for an owned `documentId`; viewers denied | List audit events. Owners must supply `documentId`; optional filters include `action`, `status`, `actorId`, `limit`, and `offset`. |
-| GET | `/api/audit/verify` | Any authenticated user in the current route code | Runs chain verification. This endpoint is currently not restricted to admins at the router level. |
-| GET | `/api/admin/alerts` | Admin only | Retrieve security alerts. |
-| GET | `/api/admin/metrics` | Admin only | Retrieve document, user, and audit metrics. |
-| POST | `/api/admin/users/:id/toggle` | Admin only | Activate/deactivate a user; an admin cannot toggle their own account through this endpoint. |
-
-## AI access advisor
-
-Both endpoints require authentication. Recommendation and confirmation service rules still apply.
-
-| Method | Endpoint | Who may call it | Purpose / request |
-|---|---|---|---|
-| POST | `/api/ai/recommend` | Authenticated user; document-specific authorization depends on supplied document and service checks | JSON body: `documentTitle`, `category`, optional `description`, optional UUID `documentId`. Returns an advisory. |
-| POST | `/api/ai/confirm` | Authenticated user subject to service authorization | JSON body: UUID `documentId`, UUID `advisoryId`, `decision` (`ACCEPTED`, `REJECTED`, `MODIFIED`), and `confirmedGrants` array containing UUID `userId` and `permissionLevel` (`view` or `edit`). |
-
-## Common responses
-
-- `400`: request validation or invalid operation.
-- `401`: missing/invalid authentication or invalid login credentials.
-- `403`: authenticated caller lacks required role or document permission.
-- `404`: resource not found (where the handler/service returns that status).
-- `500`: unexpected server-side failure.
-
-## Known verification limitation
-
-As of the current submission revision, production `GET /api/audit/verify` has returned `valid: false`, `brokenAt: 1`, with `Audit record hash mismatch`. The cause has not yet been established. Do not describe the production audit chain as successfully verified until this is diagnosed and a successful verification is observed. A mismatch alone does not prove malicious tampering.
-
-## Source of truth
-
-Route mounts: `server/src/app.ts`. Handler and authorization details: `server/src/routes/` and `server/src/services/*pg.ts`. If implementation changes, update this table and re-check authorization before claiming an endpoint is restricted.
+The current PostgreSQL schema/setup script is server/src/db/migrations/001_initial_schema.sql. For a clean setup, configure DATABASE_URL, JWT_SECRET, and AUDIT_HMAC_SECRET in the environment before running the PostgreSQL migration and seed scripts. Never commit real secrets.
