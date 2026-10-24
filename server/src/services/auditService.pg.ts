@@ -43,6 +43,7 @@ export interface PgVerificationResult {
   message: string;
   latestHash?: string;
   verifiedAt?: string;
+  legacyKeyRecords?: number;
 }
 
 export class PgAuditService {
@@ -144,6 +145,7 @@ export class PgAuditService {
 
     let expectedPrevHash = '';
     let expectedSequence = 1;
+    let legacyKeyRecords = 0;
 
     for (const row of result.rows) {
       const sequenceNumber = Number(row.sequence_number);
@@ -169,7 +171,8 @@ export class PgAuditService {
           .map((secret) => secret.trim())
           .filter(Boolean),
       ];
-      const hashMatches = [...new Set(verificationSecrets)].some((secret) => {
+      const uniqueSecrets = [...new Set(verificationSecrets)];
+      const matchedKeyIndex = uniqueSecrets.findIndex((secret) => {
         const calculatedHash = this.computeHash(
           sequenceNumber, row.timestamp, row.actor_id, row.actor_email,
           row.actor_role, row.action, row.target_type, row.target_id,
@@ -178,7 +181,7 @@ export class PgAuditService {
         return calculatedHash === row.record_hash;
       });
 
-      if (!hashMatches) {
+      if (matchedKeyIndex === -1) {
         return {
           valid: false,
           totalRecords: result.rows.length,
@@ -187,6 +190,7 @@ export class PgAuditService {
         };
       }
 
+      if (matchedKeyIndex > 0) legacyKeyRecords++;
       expectedPrevHash = row.record_hash;
       expectedSequence++;
     }
@@ -194,7 +198,10 @@ export class PgAuditService {
     return {
       valid: true,
       totalRecords: result.rows.length,
-      message: 'Audit chain integrity verified',
+      message: legacyKeyRecords > 0
+        ? `Audit chain links and hashes are consistent; ${legacyKeyRecords} record(s) matched legacy verification keys. This does not prove authenticity if a legacy key was exposed.`
+        : 'Audit chain integrity verified using the active key',
+      legacyKeyRecords,
       latestHash: result.rows.length > 0
         ? result.rows[result.rows.length - 1].record_hash
         : '',
