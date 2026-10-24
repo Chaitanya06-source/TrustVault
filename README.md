@@ -4,7 +4,7 @@
 >
 > **Core principles:** Zero-trust authorization · Least privilege · Immediate access revocation · Cryptographic audit integrity · Secure file validation
 
-TrustVault is a secure document-sharing platform built around server-side authorization, explicit document permissions, protected file storage, and a cryptographically verifiable audit ledger. It also includes an AI-assisted access advisor that supports human decisions without independently granting permissions.
+TrustVault is a document-sharing challenge project built around server-side authorization, explicit document permissions, private file paths, and an HMAC-linked audit ledger. Its access advisor is rule/keyword-based and must not independently grant permissions.
 
 **Live application:** [Open TrustVault](https://trustvault-frontend-3scb.onrender.com)  
 **Backend health check:** [Check API health](https://trustvault-1ndr.onrender.com/api/health)  
@@ -41,7 +41,7 @@ TrustVault is a secure document-sharing platform built around server-side author
 
 ## Architecture
 
-TrustVault uses a frontend, backend API, PostgreSQL database, and object-storage service.
+TrustVault uses a frontend, backend API, PostgreSQL database, and local application filesystem storage. Persistent uploaded-file storage across Render redeploys is not established.
 
 ```text
 User / Browser
@@ -73,7 +73,7 @@ Backend API (Node.js + TypeScript)
 | Backend API | Validates requests and enforces authorization rules |
 | PostgreSQL | Stores users, documents, permissions, and audit records |
 | Local `storage/files` | Stores uploaded document bytes on the application filesystem; persistence across Render redeploys is not established |
-| Audit service | Maintains and verifies the cryptographic audit chain |
+| Audit service | Maintains a sequential HMAC chain; deployed verification has an unresolved mismatch at sequence 1 |
 | AI advisory service | Generates access and sensitivity recommendations for human review |
 
 The backend is the security boundary. The frontend does not replace server-side authorization checks.
