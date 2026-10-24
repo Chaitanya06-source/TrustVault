@@ -32,7 +32,7 @@ TrustVault is a secure document-sharing platform built around server-side author
 - **Zero-trust document authorization:** Validate permissions on protected document operations instead of trusting the client.
 - **Granular access control:** Document owners can grant or revoke `view` and `edit` permissions for named users.
 - **Immediate revocation:** Subsequent requests are checked against current permissions.
-- **Protected document storage:** Store files in Supabase Storage and access them through the backend.
+- **Protected document storage:** Store file bytes through the backend in the configured local `storage/files` directory. Durable object storage is not established by the current implementation; uploaded bytes may be lost on redeploy/restart unless persistent storage is configured.
 - **Tamper-evident audit ledger:** Use an HMAC-SHA256 hash chain to detect unauthorized changes to audit records.
 - **Security monitoring:** Record denied access attempts and provide administrative audit and alert views.
 - **Upload validation:** Validate file types, extensions, and filenames to reduce common upload risks.
@@ -62,7 +62,7 @@ Backend API (Node.js + TypeScript)
       |
       +---- PostgreSQL (Neon)
       |
-      +---- Supabase Storage
+      +---- Local `storage/files` (deployment persistence not established)
 ```
 
 ### Core components
@@ -72,7 +72,7 @@ Backend API (Node.js + TypeScript)
 | Frontend | User interface for authentication, document management, permissions, and audit information |
 | Backend API | Validates requests and enforces authorization rules |
 | PostgreSQL | Stores users, documents, permissions, and audit records |
-| Supabase Storage | Stores uploaded document objects |
+| Local `storage/files` | Stores uploaded document bytes on the application filesystem; persistence across Render redeploys is not established |
 | Audit service | Maintains and verifies the cryptographic audit chain |
 | AI advisory service | Generates access and sensitivity recommendations for human review |
 
@@ -154,7 +154,7 @@ File validation reduces risk but should not be treated as a guarantee that every
 
 ## AI Access Advisor
 
-TrustVault includes an AI-assisted access advisor and document sensitivity classifier.
+TrustVault includes an advisory component that derives sensitivity and recipient suggestions from document metadata and keyword/rule-based checks. It is not a general-purpose generative model. Recommendations must not independently grant access.
 
 The intended workflow is:
 
@@ -348,6 +348,8 @@ A cryptographic hash chain makes unauthorized changes to linked audit records de
 
 ## Project Documentation
 
+- [Database schema and migration](server/src/db/migrations/001_initial_schema.sql) — PostgreSQL schema setup script.
+
 - [Threat model](THREATS.md) — Threats, mitigations, and explicitly stated verification gaps.
 - [AI interaction notes](PROMPTS.md) — AI prompts, identified errors, and engineering follow-up.
 - [API and authorization reference](docs/API.md) — Endpoints and route-level access expectations.
@@ -358,6 +360,13 @@ A cryptographic hash chain makes unauthorized changes to linked audit records de
 ---
 
 ## Known Limitations
+
+- `GET /api/auth/users` was restricted on the `fix/submission-readiness` branch to `owner` and `admin`; the new route-level regression test must be run before treating the change as verified.
+- The current app config uses `origin: true` for CORS rather than a strict production origin allowlist.
+- Login rate limiting/lockout is not implemented in the inspected login route.
+- `.docx` and `.xlsx` checks confirm a ZIP signature, not the full OpenXML package or decompressed size; ZIP bombs and malicious packages remain a risk.
+- Revocation blocks subsequent requests but cannot erase bytes already downloaded or guarantee cancellation of a transfer that passed authorization before revocation.
+- The local hash chain has no independent external head anchor in this release; suffix truncation may not be detected if only the remaining prefix is verified.
 
 - Production audit-chain verification has reported a hash mismatch at sequence 1; its cause remains unresolved. The verifier has not been represented as passing.
 - Some automated security tests still use the legacy SQLite test harness. Their results do not alone establish that every deployed PostgreSQL path behaves identically.
