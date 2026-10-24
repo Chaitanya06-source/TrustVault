@@ -158,7 +158,7 @@ documentRouter.get(
 
 /**
  * GET /api/documents/:id/download
- * Download a document from private Supabase Storage.
+ * Download a document through the backend from private application storage.
  */
 documentRouter.get(
   '/:id/download',
