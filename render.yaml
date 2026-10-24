@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: trustvault-platform
+    name: trustvault-1ndr
     env: node
     plan: free
     buildCommand: npm install --include=dev && npm --prefix client install --include=dev && npm run build
