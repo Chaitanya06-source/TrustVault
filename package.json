@@ -11,6 +11,8 @@
     "build:client": "npm --prefix client run build",
     "build": "npm run build:server && npm run build:client",
     "start": "node dist/server/src/server.js",
+    "migrate:pg": "tsx server/src/db/migrate.ts",
+    "seed:pg": "tsx server/src/db/seed.pg.ts",
     "seed": "tsx server/src/db/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",

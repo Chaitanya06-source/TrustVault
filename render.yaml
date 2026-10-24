@@ -1,10 +1,10 @@
 services:
   - type: web
-    name: trustvault-platform
+    name: trustvault-1ndr
     env: node
     plan: free
-    buildCommand: npm install && npm --prefix client install && npm --prefix client run build && npm run seed
-    startCommand: npx tsx server/src/server.ts
+    buildCommand: npm install --include=dev && npm --prefix client install --include=dev && npm run build
+    startCommand: npm run migrate:pg && npm run seed:pg && npm start
     envVars:
       - key: NODE_ENV
         value: production
