@@ -21,8 +21,6 @@ export async function authenticate(
 
     if (authHeader?.startsWith('Bearer ')) {
       token = authHeader.substring(7);
-    } else if (typeof req.query.token === 'string') {
-      token = req.query.token;
     }
 
     if (!token) {
