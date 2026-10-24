@@ -23,7 +23,7 @@ This document distinguishes design intent from verified behaviour. A test name i
 
 ## 2. Threat Matrix: Identified Attack Vectors, Mitigations & Verification
 
-| Threat ID | Threat Name | STRIDE Class | Severity | Mitigation Architecture | Verified By Test |
+| Threat ID | Threat Name | STRIDE Class | Severity | Mitigation Architecture | Test reference (coverage must be confirmed) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **THREAT-01** | Insecure Direct Object Reference (IDOR) on Metadata & Downloads | Elevation of Privilege / Info Disclosure | **CRITICAL** | Real-time SQL JOIN against `document_permissions` table; unpredictable UUIDs; direct download endpoint validation. | `server/tests/security_isolation.test.ts` |
 | **THREAT-02** | Pre-Signed S3 URL & Caching Bypass on Revocation | Elevation of Privilege / Repudiation | **CRITICAL** | Zero pre-signed URLs. Streaming proxy via application server; `Cache-Control: no-store` headers; real-time DB check. | `server/tests/immediate_revocation.test.ts` |
